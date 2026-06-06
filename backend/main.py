@@ -1,12 +1,15 @@
+import asyncio
+import logging
 import uvicorn
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from backend.chat import get_chat_response, stream_chat_response
 from backend.models import ChatRequest, ChatResponse
 from backend.config import ALLOWED_DOMAINS, PROJECT_ID, WIDGET_API_KEY, RATE_LIMIT
+from backend.ai_health import recovery_loop, AI_AVAILABLE, CONSECUTIVE_FAILURES
 
 from fastapi.responses import StreamingResponse
 
@@ -14,6 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ChatForge")
 
@@ -39,18 +43,10 @@ app.add_middleware(
 )
 
 
-async def validate_request(chat_request: ChatRequest, request: Request):
-    if chat_request.project_id != PROJECT_ID:
-        raise HTTPException(status_code=401, detail="Invalid project")
-
-    if WIDGET_API_KEY and chat_request.widget_key != WIDGET_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid widget key")
-
-    origin = request.headers.get("origin", "")
-    referer = request.headers.get("referer", "")
-    domain_ok = any(d in origin or d in referer for d in ALLOWED_DOMAINS)
-    if ALLOWED_DOMAINS and not domain_ok:
-        raise HTTPException(status_code=403, detail="Domain not allowed")
+@app.on_event("startup")
+async def startup():
+    """Start the background AI recovery monitor on server boot."""
+    asyncio.create_task(recovery_loop())
 
 
 @app.get("/health")
@@ -64,7 +60,7 @@ _FAVICON_PATH = Path(__file__).resolve().parent / "static" / "favicon.ico"
 async def favicon():
     if _FAVICON_PATH.exists():
         return FileResponse(_FAVICON_PATH)
-    # Fallback: return a 1×1 transparent GIF if the file is missing
+    # Fallback: return a 1x1 transparent GIF if the file is missing
     return Response(
         content=b"\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff"
                 b"\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02"
@@ -105,7 +101,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 def get_widget_config():
     """
     Returns the runtime configuration that widget.js needs to style itself.
- 
+
     Called once on widget load — no auth required (values are non-sensitive
     presentation config, not secrets). Cached by the browser via standard
     HTTP caching on the CDN / reverse proxy in production.
@@ -122,6 +118,33 @@ def get_widget_config():
         "quick_replies": QUICK_REPLIES,
         "business_name": BUSINESS_NAME,
     }
+
+
+@app.get("/api/v1/ai-status")
+def ai_status():
+    """
+    Expose current AI provider health for monitoring and debugging.
+    """
+    return {
+        "available": AI_AVAILABLE,
+        "mode": "ai" if AI_AVAILABLE else "fallback",
+        "failures": CONSECUTIVE_FAILURES,
+    }
+
+
+async def validate_request(chat_request: ChatRequest, request: Request):
+    if chat_request.project_id != PROJECT_ID:
+        raise HTTPException(status_code=401, detail="Invalid project")
+
+    if WIDGET_API_KEY and chat_request.widget_key != WIDGET_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid widget key")
+
+    origin = request.headers.get("origin", "")
+    referer = request.headers.get("referer", "")
+    domain_ok = any(d in origin or d in referer for d in ALLOWED_DOMAINS)
+    if ALLOWED_DOMAINS and not domain_ok:
+        raise HTTPException(status_code=403, detail="Domain not allowed")
+
 
 # Mounted last so it doesn't shadow API routes
 app.mount("/", StaticFiles(directory="widget", html=True), name="widget")

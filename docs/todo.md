@@ -1004,6 +1004,8 @@ Open this file in your browser to test the full end-to-end experience.
 
 ---
 
+Phase 10.7: if any error occure during chat with api mode, switch to fallback engine, and in background w8 for the api mode to run again and switch again .
+
 ## Phase 11 — End-to-End Testing
 
 **Goal:** Manually test every feature against the full checklist before
