@@ -1,22 +1,3 @@
-"""
-memory.py — ChatForge Session Memory (LangGraph)
-=================================================
-Provides a single shared MemorySaver checkpointer that LangGraph uses to
-persist conversation state across turns.
-
-LangGraph 1.2.4 replaces the old manual ChatMessageHistory + dict approach:
-  - MemorySaver  stores the full graph state (including message history)
-               keyed by thread_id, which maps 1-to-1 with session_id.
-  - No manual locking, no eviction loop — LangGraph manages it internally.
-  - The same checkpointer instance is shared across all requests; it is
-    thread-safe for concurrent async use.
-
-Public surface
---------------
-  checkpointer   — pass to graph.compile(checkpointer=checkpointer)
-  delete_session — drop a session (e.g. on logout / conversation end)
-"""
-
 from langgraph.checkpoint.memory import MemorySaver
 
 # ---------------------------------------------------------------------------

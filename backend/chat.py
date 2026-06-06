@@ -1,24 +1,3 @@
-"""
-chat.py — ChatForge LangGraph AI Integration
-=============================================
-Provides get_chat_response() and stream_chat_response(), the only functions
-the rest of the app needs.  Public API is identical to the previous version —
-main.py requires zero changes.
-
-Replaces the deprecated RunnableWithMessageHistory (LCEL) pattern with the
-LangGraph 1.2.4 recommended approach:
-  - StateGraph(MessagesState)  — typed state with built-in add_messages reducer
-  - MemorySaver checkpointer   — persists conversation history per thread_id
-  - graph.ainvoke()            — non-streaming invocation
-  - graph.astream_events()     — token-level streaming (version="v2")
-
-The graph is compiled once at module load (not per-request) so the
-checkpointer's in-memory state survives across calls.
-
-Falls back to the rule-based engine when no API_KEY is configured, or when
-the OpenAI key is invalid.
-"""
-
 from __future__ import annotations
 
 from typing import AsyncIterator
@@ -118,18 +97,14 @@ _graph = _make_graph(streaming=False)
 _streaming_graph = _make_graph(streaming=True)
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _thread_config(session_id: str) -> dict:
     """LangGraph config dict that scopes the checkpointer to a session."""
     return {"configurable": {"thread_id": session_id}}
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 async def get_chat_response(message: str, session_id: str) -> dict:
     """
@@ -177,7 +152,7 @@ async def stream_chat_response(
         async for event in _streaming_graph.astream_events(
             {"messages": [HumanMessage(content=message)]},
             config=_thread_config(session_id),
-            version="v2",                       # recommended; v1 is deprecated
+            version="v2",                       # v1 is deprecated
         ):
             if event["event"] == "on_chat_model_stream":
                 token: str = event["data"]["chunk"].content

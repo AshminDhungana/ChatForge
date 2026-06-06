@@ -1,16 +1,3 @@
-"""
-fallback.py — ChatForge Rule-Based Fallback Engine
-====================================================
-Activated automatically when no API key is configured.
-
-Design principles:
-  - Priority-ordered intent matching (most specific first)
-  - Response rotation so repeated questions don't feel robotic
-  - Regex patterns for flexible phrase recognition
-  - Every code-path returns a non-empty string — never crashes
-  - Zero external dependencies — fully offline, always available
-"""
-
 import re
 import random
 from backend.config import (
