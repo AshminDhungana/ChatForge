@@ -10,6 +10,7 @@ ChatForge is a lightweight, embeddable chatbot powered by LangChain and any Open
 
 [![Version](https://img.shields.io/badge/Version-0.1.0-blue?style=flat-square)](https://github.com/AshminDhungana/chatforge/releases)
 [![Status](https://img.shields.io/badge/Status-Stable-success?style=flat-square)]()
+[![Live Demo](https://img.shields.io/badge/Live-Demo-success?style=flat-square)](https://chatforge-lxry.onrender.com)
 
 <br/>
 
@@ -28,6 +29,14 @@ ChatForge is a lightweight, embeddable chatbot powered by LangChain and any Open
 ## Overview
 
 ChatForge gives any business a production-ready AI chatbot with a single line of HTML. It handles conversation memory, streaming responses, session isolation, and graceful fallback — all configurable through a single `.env` file.
+
+---
+
+## Live Demo
+
+Try ChatForge here:
+
+👉 https://chatforge-lxry.onrender.com
 
 ---
 
