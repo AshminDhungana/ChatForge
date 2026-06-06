@@ -362,10 +362,10 @@ curl -X POST http://localhost:8000/api/v1/chat \
 
 ### ✅ Phase 4 Checkpoint
 
-- [ ] `POST /api/v1/chat` returns a JSON response with `reply` and `mode` fields
-- [ ] `mode` is `"fallback"`
-- [ ] Sending a bad request (e.g. missing `message`) returns a 422 error automatically
-- [ ] The endpoint appears in `/docs`
+- [x] `POST /api/v1/chat` returns a JSON response with `reply` and `mode` fields
+- [x] `mode` is `"fallback"`
+- [x] Sending a bad request (e.g. missing `message`) returns a 422 error automatically
+- [x] The endpoint appears in `/docs`
 
 ---
 
@@ -442,10 +442,10 @@ app.add_middleware(
 
 Test these cases with curl:
 
-- [ ] Correct `project_id`, correct `widget_key` → 200 response
-- [ ] Wrong `project_id` → 401
-- [ ] Wrong `widget_key` → 401
-- [ ] No `widget_key` when `WIDGET_API_KEY` is set in `.env` → 401
+- [x] Correct `project_id`, correct `widget_key` → 200 response
+- [x] Wrong `project_id` → 401
+- [x] Wrong `widget_key` → 401
+- [x] No `widget_key` when `WIDGET_API_KEY` is set in `.env` → 401
 
 ---
 
