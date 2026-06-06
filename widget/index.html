@@ -487,7 +487,7 @@
             <button class="copy-btn" id="copy-btn" onclick="copySnippet()">Copy</button>
             <pre><span class="tg">&lt;script</span>
   <span class="at">src</span>=<span class="vl">"http://localhost:8000/widget.js"</span>
-  <span class="at">data-project-id</span>=<span class="vl">"Ashmin-Office"</span>
+  <span class="at">data-project-id</span>=<span class="vl">"ashmin-office"</span>
   <span class="at">data-widget-key</span>=<span class="vl">"change-me-to-a-random-secret"</span>
 <span class="tg">&gt;&lt;/script&gt;</span></pre>
           </div>
@@ -523,7 +523,7 @@
     <!-- ── Demo page JS (copy snippet, etc.) ─────────────────────────── -->
     <script>
       function copySnippet() {
-        const snippet = `<script\n  src="http://localhost:8000/widget.js"\n  data-project-id="marios-pizza"\n  data-widget-key="change-me-to-a-random-secret"\n><\/script>`;
+        const snippet = `<script\n  src="http://localhost:8000/widget.js"\n  data-project-id="ashmin-office"\n  data-widget-key="change-me-to-a-random-secret"\n><\/script>`;
         navigator.clipboard.writeText(snippet).then(() => {
           const btn = document.getElementById("copy-btn");
           btn.textContent = "Copied!";
