@@ -12,11 +12,11 @@ depend on what you build earlier. Read every section before writing code for it.
 
 Before you write a single line of code, make sure you have these installed:
 
-- [ ] **Python 3.10 or higher** — run `python --version` to check
-- [ ] **pip** — run `pip --version` to check
-- [ ] **Git** — run `git --version` to check
-- [ ] A code editor (VS Code is recommended if you don't have one)
-- [ ] A terminal / command prompt you're comfortable using
+- [x] **Python 3.10 or higher** — run `python --version` to check
+- [x] **pip** — run `pip --version` to check
+- [x] **Git** — run `git --version` to check
+- [x] A code editor (VS Code is recommended if you don't have one)
+- [x] A terminal / command prompt you're comfortable using
 
 > **New to any of these?** Install Python from https://python.org, Git from
 > https://git-scm.com. VS Code from https://code.visualstudio.com.
@@ -84,10 +84,10 @@ example business (Mario's Pizza) for now. You will fill in the AI keys later.
 
 ### ✅ Phase 0 Checkpoint
 
-- [ ] Running `python --version` inside `venv` shows 3.10+
-- [ ] Running `pip list` shows fastapi, uvicorn, langchain, and langchain-openai
-- [ ] A `.env` file exists in the project root
-- [ ] You can describe what each file in `backend/` is for
+- [x] Running `python --version` inside `venv` shows 3.10+
+- [x] Running `pip list` shows fastapi, uvicorn, langchain, and langchain-openai
+- [x] A `.env` file exists in the project root
+- [x] You can describe what each file in `backend/` is for
 
 ---
 
@@ -160,9 +160,9 @@ print(type(QUICK_REPLIES)) # Should print <class 'list'>
 print(type(ALLOWED_DOMAINS)) # Should print <class 'list'>
 ```
 
-- [ ] All values load without errors
-- [ ] `QUICK_REPLIES` and `ALLOWED_DOMAINS` are Python lists, not strings
-- [ ] Missing optional keys don't crash the import
+- [x] All values load without errors
+- [x] `QUICK_REPLIES` and `ALLOWED_DOMAINS` are Python lists, not strings
+- [x] Missing optional keys don't crash the import
 
 ---
 
