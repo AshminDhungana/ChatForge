@@ -503,19 +503,95 @@
       #cf-footer a:hover { text-decoration: underline; }
 
       /* ── Mobile: full-screen panel ───────────────────────────── */
+
+      /*
+       * MOBILE KEYBOARD & VIEWPORT STRATEGY
+       * ─────────────────────────────────────
+       * On mobile the panel becomes a bottom-sheet anchored to the
+       * visual viewport (not the layout viewport). Three layers:
+       *
+       * 1. dvh  -- dynamic viewport height; shrinks with the soft keyboard.
+       * 2. env(safe-area-inset-*) -- notches & home bars on iOS/Android.
+       * 3. VisualViewport API (JS) -- fallback for browsers without dvh
+       *    (iOS < 15.4, Samsung Internet < 19).
+       *
+       * The bubble is hidden while the panel is open on mobile so it
+       * can never overlap the send button.
+       */
+
       @media (max-width: 480px) {
+        /* Panel: bottom-sheet that fills the visual viewport */
         #cf-panel {
+          /* Anchor to screen edges */
           bottom: 0;
           right: 0;
           left: 0;
           width: 100%;
-          height: 85vh;
+
+          /* Use dvh so the panel shrinks when the keyboard opens.
+             Fall back to 100vh for older browsers; JS overrides both. */
+          height: 100dvh;
+          max-height: 100dvh;
+
+          /* Rounded top corners only */
           border-radius: var(--radius) var(--radius) 0 0;
           transform-origin: bottom center;
+
+          /* Absorb safe areas (notch, home indicator) */
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+
+          /* Let the panel itself scroll rather than the host page */
+          overscroll-behavior: contain;
         }
+
+        /* When the keyboard is up we add .cf-keyboard-open; shrink panel */
+        #cf-panel.cf-keyboard-open {
+          /* JS sets exact height; this is just a safety cap */
+          max-height: 100dvh;
+        }
+
+        /* Hide bubble while panel is open — prevents overlap with send btn */
+        #cf-bubble.cf-hidden {
+          opacity: 0;
+          pointer-events: none;
+          transform: scale(0.7);
+        }
+
+        /* Bubble: respect safe-area-inset-bottom so it doesn't hide
+           under the home indicator on iPhone */
         #cf-bubble {
-          bottom: 20px;
+          bottom: calc(20px + env(safe-area-inset-bottom, 0px));
           right: 20px;
+        }
+
+        /* Input area: extra bottom padding for home indicator */
+        #cf-input-area {
+          padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+
+        /* Make input tap target larger on mobile */
+        #cf-input {
+          font-size: 16px; /* prevents iOS auto-zoom on focus */
+          padding: 10px 14px;
+        }
+
+        /* Larger send button tap target */
+        #cf-send-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 22px;
+        }
+
+        /* Larger close button tap target */
+        #cf-close-btn {
+          width: 36px;
+          height: 36px;
+          min-width: 36px;
+        }
+
+        /* Message bubbles: a bit wider on mobile */
+        .cf-bubble {
+          max-width: calc(100vw - 96px);
         }
       }
     `;
@@ -695,6 +771,14 @@
       renderQuickReplies(state.config.quick_replies);
     }
 
+    // On mobile: hide bubble so it can't overlap the send button,
+    // then pin the panel to the visual viewport immediately.
+    if (state._isMobile && state._isMobile()) {
+      refs.bubble.classList.add("cf-hidden");
+      // Small delay lets the open animation start before we measure height
+      setTimeout(() => state._updatePanelHeight && state._updatePanelHeight(), 50);
+    }
+
     // Focus input for keyboard users after animation
     setTimeout(() => refs.input.focus(), 240);
   }
@@ -702,6 +786,14 @@
   function closeWidget() {
     state.isOpen = false;
     refs.panel.classList.remove("open");
+    refs.panel.classList.remove("cf-keyboard-open");
+
+    // Restore panel geometry so the CSS takes over on next open
+    refs.panel.style.height = "";
+    refs.panel.style.top = "";
+    refs.panel.style.bottom = "";
+
+    refs.bubble.classList.remove("cf-hidden");
     refs.bubble.setAttribute("aria-expanded", "false");
     refs.bubble.setAttribute("aria-label", "Open chat");
     refs.bubble.innerHTML = `${icons.chat}<span id="cf-badge" class="${state.greetingShown ? "" : "visible"}" aria-label="1 unread message"></span>`;
@@ -1081,6 +1173,122 @@
         closeWidget();
       }
     });
+
+    // ── Mobile viewport / keyboard handling ────────────────────────────────
+    setupMobileViewportHandling();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 15b. MOBILE VIEWPORT & KEYBOARD HANDLING
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Mobile strategy overview
+   * ─────────────────────────
+   * Three-layer approach for maximum cross-browser reliability:
+   *
+   * Layer 1 — VisualViewport API
+   *   The gold standard for tracking the *visible* area. Fires on every
+   *   keyboard open/close and pinch-zoom. Supported in Chrome 61+, Safari 13+,
+   *   Firefox 91+. We listen to `resize` and `scroll` on window.visualViewport.
+   *
+   * Layer 2 — window resize fallback
+   *   For browsers without VisualViewport (Samsung Internet < 15, old WebViews).
+   *   Debounced to avoid thrashing layout during inertial scroll.
+   *
+   * Layer 3 — CSS `dvh` + `env(safe-area-inset-*)`
+   *   Pure-CSS baseline that works even when JS is delayed or fails.
+   *
+   * What we do with these signals:
+   *   • Directly set `#cf-panel` height so it never goes under the keyboard.
+   *   • Add/remove `.cf-keyboard-open` to adjust padding.
+   *   • Hide the bubble while the panel is open to prevent overlap.
+   *   • On panel close, restore everything.
+   */
+  function setupMobileViewportHandling() {
+    const MOBILE_BREAKPOINT = 480;
+    let _rafId = null;
+
+    // Detect mobile once; re-check on orientation change.
+    let isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+    window.addEventListener("orientationchange", () => {
+      isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      if (state.isOpen) updatePanelHeight();
+    });
+
+    /**
+     * Core resize handler — sets the panel height to exactly match the
+     * current visual viewport height, so the keyboard never hides content.
+     *
+     * Uses requestAnimationFrame to batch layout reads/writes and avoid
+     * forced synchronous layouts (a major cause of jank on mobile).
+     */
+    function updatePanelHeight() {
+      if (!state.isOpen || !isMobile) return;
+      if (_rafId) cancelAnimationFrame(_rafId);
+      _rafId = requestAnimationFrame(() => {
+        const vvp = window.visualViewport;
+
+        // Visual viewport height is the authoritative source of truth.
+        // It shrinks when the soft keyboard appears.
+        const visH = vvp ? vvp.height : window.innerHeight;
+        const visTop = vvp ? vvp.offsetTop : 0;
+
+        // Pin the panel to the *top of the visual viewport*.
+        // This is critical for iOS Safari where the panel would otherwise
+        // sit behind the keyboard when using `position: fixed`.
+        refs.panel.style.height = `${visH}px`;
+        refs.panel.style.top = `${visTop}px`;
+        refs.panel.style.bottom = "auto"; // override the CSS bottom:0
+
+        // Detect whether the keyboard is open:
+        // heuristic — visual viewport is significantly smaller than screen height
+        const kbOpen = visH < window.screen.height * 0.75;
+        refs.panel.classList.toggle("cf-keyboard-open", kbOpen);
+
+        scrollToBottom();
+        _rafId = null;
+      });
+    }
+
+    // ── Layer 1: VisualViewport API ─────────────────────────────────────────
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", updatePanelHeight);
+      window.visualViewport.addEventListener("scroll", updatePanelHeight);
+    }
+
+    // ── Layer 2: window resize fallback ────────────────────────────────────
+    // Debounced so we don't thrash on every pixel of an inertial scroll.
+    let _resizeTimer = null;
+    window.addEventListener("resize", () => {
+      isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(updatePanelHeight, 50);
+    });
+
+    // ── Input focus/blur: track keyboard open state ─────────────────────────
+    // On Android Chrome the VisualViewport resize fires reliably on focus,
+    // but on iOS Safari it sometimes lags. A short delay after focus gives
+    // the browser time to finish animating the keyboard in.
+    refs.input.addEventListener("focus", () => {
+      if (!isMobile) return;
+      setTimeout(updatePanelHeight, 300); // extra tick for iOS Safari
+    });
+
+    refs.input.addEventListener("blur", () => {
+      if (!isMobile) return;
+      // Delay reset so we don't flash during quick focus switches
+      setTimeout(() => {
+        if (!refs.input.matches(":focus")) {
+          refs.panel.classList.remove("cf-keyboard-open");
+          updatePanelHeight();
+        }
+      }, 100);
+    });
+
+    // ── Expose updater so openWidget / closeWidget can trigger it ──────────
+    state._updatePanelHeight = updatePanelHeight;
+    state._isMobile = () => isMobile;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
