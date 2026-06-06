@@ -3,6 +3,7 @@ import json
 import logging
 import uvicorn
 from pathlib import Path
+from contextlib import asynccontextmanager         
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,9 +61,20 @@ class SessionIdMiddleware(BaseHTTPMiddleware):
         return response
 
 # ----------------------------------------------------------------------
+# Lifespan context manager (replaces @app.on_event("startup"))
+# ----------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start background tasks on startup and clean up on shutdown."""
+    # Startup: launch the recovery loop as a background task
+    asyncio.create_task(recovery_loop())
+    yield
+    # Shutdown: nothing to clean up here, but the pattern is ready for future needs
+
+# ----------------------------------------------------------------------
 # FastAPI app setup
 # ----------------------------------------------------------------------
-app = FastAPI(title="ChatForge")
+app = FastAPI(title="ChatForge", lifespan=lifespan)   
 
 # Configure rate limiter with custom key function
 limiter = Limiter(key_func=get_session_id)
@@ -90,12 +102,8 @@ app.add_middleware(
 app.add_middleware(SessionIdMiddleware)
 
 # ----------------------------------------------------------------------
-# Startup & health
+# Health endpoints 
 # ----------------------------------------------------------------------
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(recovery_loop())
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
