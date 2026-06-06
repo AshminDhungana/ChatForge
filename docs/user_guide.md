@@ -112,7 +112,7 @@ If you are just getting started, **Groq** is the recommended option — no credi
 
 ```env
 API_BASE="https://api.groq.com/openai/v1"
-MODEL="llama3-8b-8192"
+MODEL="llama-3.1-8b-instant"
 ```
 
 ---
