@@ -940,8 +940,9 @@
     // ── Stream processing ────────────────────────────────────────────────────
     hideTyping();
     const { bubbleEl, cursorEl } = appendMessage("ai", "", { withCursor: true, noTimestamp: true });
-    let buffer = ""; // Accumulates partial SSE lines between chunks
-    let fullText = ""; // Complete AI reply
+    let fullText = "";
+    let partialLine = "";       // leftover from previous chunk
+    let eventData = [];         // accumulates lines of the current event
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -951,43 +952,55 @@
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = (partialLine + chunk).split("\n");
+        partialLine = lines.pop(); // last line may be incomplete
 
-        // SSE lines end with \n\n; process all complete events in the buffer
-        const events = buffer.split("\n\n");
-        buffer = events.pop(); // Last element may be incomplete
-
-        for (const event of events) {
-          const line = event.trim();
-          if (!line.startsWith("data: ")) continue;
-
-          const token = line.slice(6); // strip "data: "
-          if (token === "[DONE]") break;
-
-          fullText += token;
-          // Update bubble text without inner HTML to prevent XSS
+        for (const line of lines) {
+          if (line === "") {
+            // Empty line marks the end of an event → process it
+            if (eventData.length > 0) {
+              const rawData = eventData.join("\n");
+              if (rawData === "[DONE]") {
+                // Stream finished normally
+                break;
+              }
+              fullText += rawData;
+              bubbleEl.textContent = fullText;
+              bubbleEl.appendChild(cursorEl);
+              scrollToBottom();
+            }
+            eventData = []; // reset for next event
+          } else if (line.startsWith("data: ")) {
+            // Capture the data payload (may be multi‑line across several data: lines)
+            eventData.push(line.slice(6));
+          }
+          // Ignore other SSE fields (e.g., event:, id:, retry:)
+        }
+      }
+      // Process any remaining event if the stream ends without a final blank line
+      if (eventData.length > 0) {
+        const rawData = eventData.join("\n");
+        if (rawData !== "[DONE]") {
+          fullText += rawData;
           bubbleEl.textContent = fullText;
-          bubbleEl.appendChild(cursorEl); // Keep cursor at end
+          bubbleEl.appendChild(cursorEl);
           scrollToBottom();
         }
       }
     } catch (streamErr) {
-      // Partial message received — show what we got
       if (!fullText) {
         appendErrorNotice("Stream interrupted. Please try again.");
       }
     } finally {
-      // Remove cursor, add timestamp
       cursorEl.remove();
       const tsEl = document.createElement("div");
       tsEl.className = "cf-ts";
       tsEl.textContent = formatTime();
       bubbleEl.closest(".cf-msg-row").querySelector("div[style]").appendChild(tsEl);
-
       scrollToBottom();
       finishStreaming();
     }
-  }
 
   function finishStreaming() {
     state.isStreaming = false;

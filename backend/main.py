@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import uvicorn
 from pathlib import Path
@@ -6,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.chat import get_chat_response, stream_chat_response
 from backend.models import ChatRequest, ChatResponse
@@ -13,17 +15,60 @@ from backend.config import ALLOWED_DOMAINS, PROJECT_ID, WIDGET_API_KEY, RATE_LIM
 from backend.ai_health import recovery_loop, get_status_dict
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
+# ----------------------------------------------------------------------
+# Custom key function that reads session_id from request.state
+# ----------------------------------------------------------------------
+def get_session_id(request: Request) -> str:
+    """Return session_id previously set by middleware, fallback to IP."""
+    session_id = getattr(request.state, "session_id", "")
+    if not session_id:
+        # Fallback to IP if something went wrong (should not happen)
+        from slowapi.util import get_remote_address
+        return get_remote_address(request)
+    return session_id
+
+# ----------------------------------------------------------------------
+# Middleware to extract session_id from POST body
+# ----------------------------------------------------------------------
+class SessionIdMiddleware(BaseHTTPMiddleware):
+    """Extract session_id from JSON body and attach to request.state."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Only process POST requests to chat endpoints
+        if request.method == "POST" and request.url.path in ("/api/v1/chat", "/api/v1/chat/stream"):
+            try:
+                body = await request.body()
+                if body:
+                    data = json.loads(body)
+                    session_id = data.get("session_id", "")
+                    request.state.session_id = session_id
+                    # Re-attach body so FastAPI can parse it later
+                    request._body = body
+                else:
+                    request.state.session_id = ""
+            except Exception:
+                request.state.session_id = ""
+        else:
+            request.state.session_id = ""
+
+        response = await call_next(request)
+        return response
+
+# ----------------------------------------------------------------------
+# FastAPI app setup
+# ----------------------------------------------------------------------
 app = FastAPI(title="ChatForge")
 
-limiter = Limiter(key_func=get_remote_address)
+# Configure rate limiter with custom key function
+limiter = Limiter(key_func=get_session_id)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# CORS origins 
 cors_origins = set()
 for d in ALLOWED_DOMAINS:
     cors_origins.add(f"https://{d}")
@@ -40,20 +85,21 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+# session middleware (must be added after CORS but before routes)
+app.add_middleware(SessionIdMiddleware)
 
+# ----------------------------------------------------------------------
+# Startup & health
+# ----------------------------------------------------------------------
 @app.on_event("startup")
 async def startup():
-    """Start the background AI recovery monitor on server boot."""
     asyncio.create_task(recovery_loop())
-
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
 _FAVICON_PATH = Path(__file__).resolve().parent / "static" / "favicon.ico"
-
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -68,7 +114,9 @@ async def favicon():
         media_type="image/gif",
     )
 
-
+# ----------------------------------------------------------------------
+# API endpoints
+# ----------------------------------------------------------------------
 @app.post("/api/v1/chat", response_model=ChatResponse)
 @limiter.limit(RATE_LIMIT)
 async def chat(chat_request: ChatRequest, request: Request):
@@ -76,16 +124,9 @@ async def chat(chat_request: ChatRequest, request: Request):
     result = await get_chat_response(chat_request.message, chat_request.session_id)
     return ChatResponse(**result)
 
-
 @app.post("/api/v1/chat/stream")
 @limiter.limit(RATE_LIMIT)
 async def chat_stream(chat_request: ChatRequest, request: Request):
-    """
-    Streams the reply token-by-token as Server-Sent Events.
-    Content-Type: text/event-stream
-    Each chunk: 'data: <token>\\n\\n'
-    Final chunk: 'data: [DONE]\\n\\n'
-    """
     await validate_request(chat_request, request)
     return StreamingResponse(
         stream_chat_response(chat_request.message, chat_request.session_id),
@@ -96,13 +137,8 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
         },
     )
 
-
 @app.get("/api/v1/config")
 def get_widget_config():
-    """
-    Returns the runtime configuration that widget.js needs to style itself.
-    Called once on widget load — no auth required.
-    """
     from backend.config import (
         WIDGET_COLOR,
         GREETING_MESSAGE,
@@ -116,22 +152,13 @@ def get_widget_config():
         "business_name": BUSINESS_NAME,
     }
 
-
 @app.get("/api/v1/ai-status")
 def ai_status():
-    """
-    Expose current circuit-breaker health for monitoring and debugging.
-
-    Returns:
-        state:           "closed" | "half_open" | "open"
-        available:       bool — True only when state is "closed"
-        mode:            "ai" | "fallback"
-        failures:        consecutive failure count
-        last_opened_at:  ISO-8601 timestamp of last circuit opening, or null
-    """
     return get_status_dict()
 
-
+# ----------------------------------------------------------------------
+# Validation helper 
+# ----------------------------------------------------------------------
 async def validate_request(chat_request: ChatRequest, request: Request):
     if chat_request.project_id != PROJECT_ID:
         raise HTTPException(status_code=401, detail="Invalid project")
@@ -145,10 +172,10 @@ async def validate_request(chat_request: ChatRequest, request: Request):
     if ALLOWED_DOMAINS and not domain_ok:
         raise HTTPException(status_code=403, detail="Domain not allowed")
 
-
-# Mounted last so it doesn't shadow API routes
+# ----------------------------------------------------------------------
+# Static widget 
+# ----------------------------------------------------------------------
 app.mount("/", StaticFiles(directory="widget", html=True), name="widget")
-
 
 if __name__ == "__main__":
     uvicorn.run("backend.main:app", host="localhost", port=8000, reload=True)

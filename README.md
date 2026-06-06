@@ -50,16 +50,16 @@ ChatForge gives any business a production-ready AI chatbot with a single line of
 
 ## Tech Stack
 
-| Layer             | Technology                        | Purpose                                         |
-| ----------------- | --------------------------------- | ----------------------------------------------- |
-| **Backend**       | FastAPI + Uvicorn                 | High-performance async API server               |
-| **AI Layer**      | LangChain + ChatOpenAI            | Unified interface for any OpenAI-compatible LLM |
-| **Streaming**     | `StreamingResponse` + `astream()` | Real-time token delivery                        |
-| **Memory**        | `ConversationBufferMemory`        | In-session conversation context                 |
-| **Rate Limiting** | SlowAPI                           | Per-session abuse prevention                    |
-| **Fallback**      | Rule-based NLP engine             | Always-on responses without an API key          |
-| **Widget**        | Vanilla JavaScript                | Zero-dependency embeddable chat UI              |
-| **Config**        | `.env` + python-dotenv            | Single-file business configuration              |
+| Layer             | Technology                         | Purpose                                         |
+| ----------------- | ---------------------------------- | ----------------------------------------------- |
+| **Backend**       | FastAPI + Uvicorn                  | High-performance async API server               |
+| **AI Layer**      | LangChain + LangGraph + ChatOpenAI | Unified interface for any OpenAI-compatible LLM |
+| **Streaming**     | `StreamingResponse` + `astream()`  | Real-time token delivery                        |
+| **Memory**        | `MemorySaver`                      | In-session conversation context                 |
+| **Rate Limiting** | SlowAPI                            | Per-session abuse prevention                    |
+| **Fallback**      | Rule-based NLP engine              | Always-on responses without an API key          |
+| **Widget**        | Vanilla JavaScript                 | Zero-dependency embeddable chat UI              |
+| **Config**        | `.env` + python-dotenv             | Single-file business configuration              |
 
 ---
 
@@ -68,8 +68,8 @@ ChatForge gives any business a production-ready AI chatbot with a single line of
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/AshminDhungana/chatforge.git
-cd chatforge
+git clone https://github.com/AshminDhungana/ChatForge.git
+cd ChatForge
 ```
 
 ### 2. Install dependencies
@@ -230,7 +230,7 @@ Tokens are sent to the widget in real time using LangChain's `astream()` and Fas
 
 ### Conversation memory
 
-Each visitor session gets its own `ConversationBufferMemory` instance. The bot remembers earlier messages within the same chat. Memory is scoped to the session and cleared when the visitor leaves.
+Each visitor session gets its own LangGraph `MemorySaver` instance. The bot remembers earlier messages within the same chat. Memory is scoped to the session and cleared when the visitor leaves.
 
 ### Session isolation
 
