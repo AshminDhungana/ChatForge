@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from backend.fallback import get_fallback_response
+from backend.models import ChatRequest, ChatResponse
+
 
 app = FastAPI(title="ChatForge")
 
@@ -12,6 +15,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.post("/api/v1/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    reply = get_fallback_response(request.message)
+    return ChatResponse(reply=reply, mode="fallback")
 
 @app.get("/health")
 def health():

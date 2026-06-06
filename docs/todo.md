@@ -227,10 +227,10 @@ Leave this running in a terminal tab while you develop.
 
 ### ✅ Phase 2 Checkpoint
 
-- [ ] `http://localhost:8000/health` returns `{"status": "ok"}` in your browser
-- [ ] `http://localhost:8000/docs` shows the FastAPI interactive docs page
-- [ ] Saving a change to `main.py` causes the server to reload in the terminal
-- [ ] No import errors on startup
+- [x] `http://localhost:8000/health` returns `{"status": "ok"}` in your browser
+- [x] `http://localhost:8000/docs` shows the FastAPI interactive docs page
+- [x] Saving a change to `main.py` causes the server to reload in the terminal
+- [x] No import errors on startup
 
 ---
 
@@ -293,10 +293,10 @@ print(get_fallback_response("Where are you located?"))
 print(get_fallback_response("asdfghjkl"))  # Should return contact info, not crash
 ```
 
-- [ ] Hours question returns a string containing your business hours
-- [ ] Location question returns a string containing your address
-- [ ] Unrecognised input returns a helpful fallback, not an error
-- [ ] No external API calls are made (this must work fully offline)
+- [x] Hours question returns a string containing your business hours
+- [x] Location question returns a string containing your address
+- [x] Unrecognised input returns a helpful fallback, not an error
+- [x] No external API calls are made (this must work fully offline)
 
 ---
 
