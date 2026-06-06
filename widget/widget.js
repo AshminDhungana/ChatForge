@@ -919,7 +919,6 @@
       finishStreaming();
       return;
     }
-
     if (!response.ok) {
       hideTyping();
       const errorMessages = {
@@ -1009,7 +1008,7 @@
     refs.sendBtn.disabled = !refs.input.value.trim();
     refs.input.focus();
   }
-
+  }
   // ───────────────────────────────────────────────────────────────────────────
   // 14. CONFIG FETCH
   // ───────────────────────────────────────────────────────────────────────────
