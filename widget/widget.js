@@ -632,7 +632,7 @@
     send: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
     </svg>`,
-    bot: "🤖",
+    bot: "🦉",
     user: "👤",
   };
 
@@ -675,7 +675,7 @@
     panel.innerHTML = `
       <!-- Header -->
       <div id="cf-header">
-        <div class="cf-avatar" aria-hidden="true">🤖</div>
+        <div class="cf-avatar" aria-hidden="true">${icons.bot}</div>
         <div class="cf-header-text">
           <div class="cf-name" id="cf-business-name">${sanitize(state.config.business_name)}</div>
           <div class="cf-status">
@@ -779,8 +779,12 @@
       setTimeout(() => state._updatePanelHeight && state._updatePanelHeight(), 50);
     }
 
-    // Focus input for keyboard users after animation
-    setTimeout(() => refs.input.focus(), 240);
+    // Focus input for keyboard users after animation.
+    // On mobile we give a longer delay so the panel slide-in animation
+    // fully completes before the keyboard pushes the viewport up —
+    // this eliminates the layout jump on first open.
+    const focusDelay = (state._isMobile && state._isMobile()) ? 400 : 240;
+    setTimeout(() => refs.input.focus(), focusDelay);
   }
 
   function closeWidget() {
@@ -835,7 +839,7 @@
     const avatarEl = document.createElement("div");
     avatarEl.className = "cf-msg-avatar";
     avatarEl.setAttribute("aria-hidden", "true");
-    avatarEl.textContent = role === "ai" ? "🤖" : "👤";
+    avatarEl.textContent = role === "ai" ? icons.bot : icons.user;
 
     const bubbleEl = document.createElement("div");
     bubbleEl.className = "cf-bubble";
@@ -923,7 +927,17 @@
   // ───────────────────────────────────────────────────────────────────────────
 
   function setInputDisabled(disabled) {
-    refs.input.disabled = disabled;
+    // On mobile, input.disabled causes an involuntary blur which dismisses
+    // the soft keyboard → visible flicker on every send. Instead we use
+    // readOnly + pointer-events to lock the field while keeping focus alive.
+    const isMobile = state._isMobile && state._isMobile();
+    if (isMobile) {
+      refs.input.readOnly = disabled;
+      refs.input.style.pointerEvents = disabled ? "none" : "";
+      refs.input.style.opacity = disabled ? "0.55" : "";
+    } else {
+      refs.input.disabled = disabled;
+    }
     refs.sendBtn.disabled = disabled;
   }
 
@@ -1098,7 +1112,12 @@
     setInputDisabled(false);
     // ensure send button is disabled if input is empty after streaming
     refs.sendBtn.disabled = !refs.input.value.trim();
-    refs.input.focus();
+    // On mobile the keyboard never left (readOnly kept focus), so calling
+    // focus() again would cause a keyboard re-animation flicker. Only
+    // refocus on desktop where we actually disabled the input.
+    if (!state._isMobile || !state._isMobile()) {
+      refs.input.focus();
+    }
   }
   }
   // ───────────────────────────────────────────────────────────────────────────
