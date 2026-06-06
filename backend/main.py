@@ -7,6 +7,10 @@ from backend.chat import get_chat_response
 from backend.models import ChatRequest, ChatResponse
 from backend.config import ALLOWED_DOMAINS, PROJECT_ID, WIDGET_API_KEY
 
+from fastapi.responses import FileResponse, StreamingResponse   
+from backend.chat import get_chat_response, stream_chat_response  
+
+
 app = FastAPI(title="ChatForge")
 
 app.add_middleware(
@@ -46,6 +50,24 @@ async def chat(request: ChatRequest, http_request: Request):
     await validate_request(request, http_request)
     result = await get_chat_response(request.message, request.session_id)
     return ChatResponse(**result)
+
+@app.post("/api/v1/chat/stream")
+async def chat_stream(request: ChatRequest, http_request: Request):
+    """
+    Streams the reply token-by-token as Server-Sent Events.
+    Content-Type: text/event-stream
+    Each chunk: 'data: <token>\n\n'
+    Final chunk: 'data: [DONE]\n\n'
+    """
+    await validate_request(request, http_request)
+    return StreamingResponse(
+        stream_chat_response(request.message, request.session_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  
+        },
+    )
 
 
 # Mounted last so it doesn't shadow API routes

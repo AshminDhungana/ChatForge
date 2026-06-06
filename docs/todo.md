@@ -514,10 +514,10 @@ print(m1 is m2)  # True  — same object returned for same session
 print(m1 is m3)  # False — different session gets different memory
 ```
 
-- [ ] Same `session_id` always returns the same object
-- [ ] Different `session_id` values return different objects
-- [ ] `MAX_SESSIONS` cap prevents unbounded memory growth
-- [ ] `delete_session()` cleanly removes a session
+- [x] Same `session_id` always returns the same object
+- [x] Different `session_id` values return different objects
+- [x] `MAX_SESSIONS` cap prevents unbounded memory growth
+- [x] `delete_session()` cleanly removes a session
 
 ---
 
@@ -738,10 +738,12 @@ You should see tokens appearing one by one in the terminal output.
 
 ### ✅ Phase 8 Checkpoint
 
-- [ ] Streaming endpoint returns `Content-Type: text/event-stream`
-- [ ] Tokens appear incrementally in the terminal (not all at once)
-- [ ] Streaming with no `API_KEY` still returns something — it doesn't hang or crash
-- [ ] Memory is updated after a streamed conversation (next message has context)
+- [x] Streaming endpoint returns `Content-Type: text/event-stream`
+- [x] Tokens appear incrementally in the terminal (not all at once)
+- [x] Streaming with no `API_KEY` still returns something — it doesn't hang or crash
+- [x] Memory is updated after a streamed conversation (next message has context)
+
+- Updated memeory.py and chat.py to use langgraph.
 
 ---
 
