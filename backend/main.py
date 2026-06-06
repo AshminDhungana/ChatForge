@@ -10,8 +10,17 @@ from backend.config import ALLOWED_DOMAINS, PROJECT_ID, WIDGET_API_KEY
 from fastapi.responses import FileResponse, StreamingResponse   
 from backend.chat import get_chat_response, stream_chat_response  
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from backend.config import RATE_LIMIT
+
 
 app = FastAPI(title="ChatForge")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,12 +55,14 @@ async def favicon():
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
+@limiter.limit(RATE_LIMIT)
 async def chat(request: ChatRequest, http_request: Request):
     await validate_request(request, http_request)
     result = await get_chat_response(request.message, request.session_id)
     return ChatResponse(**result)
 
 @app.post("/api/v1/chat/stream")
+@limiter.limit(RATE_LIMIT)
 async def chat_stream(request: ChatRequest, http_request: Request):
     """
     Streams the reply token-by-token as Server-Sent Events.

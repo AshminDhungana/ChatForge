@@ -878,9 +878,9 @@ Reset to `"20/minute"` after testing.
 
 ### ✅ Phase 9 Checkpoint
 
-- [ ] Normal usage (under limit) works as before
-- [ ] Exceeding the rate limit returns HTTP 429
-- [ ] Changing `RATE_LIMIT` in `.env` and restarting changes the limit
+- [x] Normal usage (under limit) works as before
+- [x] Exceeding the rate limit returns HTTP 429
+- [x] Changing `RATE_LIMIT` in `.env` and restarting changes the limit
 
 ---
 
