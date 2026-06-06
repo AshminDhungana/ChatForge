@@ -264,7 +264,7 @@
       #cf-messages::-webkit-scrollbar { width: 4px; }
       #cf-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-      /* ── Message bubbles ─────────────────────────────────────── */
+      /* ── Message bubbles (improved user bubble styling) ───────── */
       .cf-msg-row {
         display: flex;
         gap: 8px;
@@ -296,28 +296,34 @@
       }
 
       .cf-bubble {
-        max-width: calc(100% - 48px);
-        padding: 10px 13px;
-        border-radius: 14px;
+        max-width: 260px;
+        padding: 10px 14px;
+        border-radius: 18px;
         font-size: 14px;
-        line-height: 1.55;
+        line-height: 1.5;
         color: var(--text);
         background: var(--ai-bubble);
         word-break: break-word;
+        white-space: pre-wrap;
         position: relative;
       }
-      .cf-msg-row.ai .cf-bubble { border-bottom-left-radius: 4px; }
+      /* AI bubble: sharp corner on bottom-left */
+      .cf-msg-row.ai .cf-bubble {
+        border-bottom-left-radius: 4px;
+      }
+      /* User bubble: improved styling - sharp corner on bottom-right, shadow, better contrast */
       .cf-msg-row.user .cf-bubble {
         background: var(--user-bubble);
         color: var(--on-user);
         border-bottom-right-radius: 4px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
       }
 
       /* Timestamp */
       .cf-ts {
         font-size: 10px;
         color: var(--text-muted);
-        margin-top: 3px;
+        margin-top: 4px;
         padding: 0 4px;
         opacity: 0.7;
         text-align: right;
@@ -328,7 +334,7 @@
       .cf-cursor {
         display: inline-block;
         width: 2px;
-        height: 13px;
+        height: 14px;
         background: var(--text-muted);
         border-radius: 1px;
         margin-left: 2px;
@@ -349,11 +355,11 @@
       #cf-typing.visible { display: flex; align-items: center; gap: 8px; }
       .cf-typing-dots {
         background: var(--ai-bubble);
-        border-radius: 14px;
+        border-radius: 18px;
         border-bottom-left-radius: 4px;
-        padding: 10px 14px;
+        padding: 10px 16px;
         display: flex;
-        gap: 4px;
+        gap: 5px;
         align-items: center;
       }
       .cf-dot {
@@ -420,8 +426,8 @@
       #cf-input {
         flex: 1;
         border: 1.5px solid var(--border);
-        border-radius: 12px;
-        padding: 9px 13px;
+        border-radius: 20px;
+        padding: 9px 14px;
         font-size: 14px;
         font-family: var(--font);
         color: var(--text);
@@ -433,9 +439,7 @@
         transition: border-color var(--duration) ease,
                     box-shadow var(--duration) ease;
         overflow-y: auto;
-        scrollbar-width: none;
       }
-      #cf-input::-webkit-scrollbar { display: none; }
       #cf-input:focus {
         border-color: var(--brand);
         box-shadow: 0 0 0 3px var(--brand-ring);
@@ -447,7 +451,7 @@
       #cf-send-btn {
         width: 40px;
         height: 40px;
-        border-radius: var(--radius-sm);
+        border-radius: 20px;
         background: var(--brand);
         border: none;
         cursor: pointer;
@@ -682,7 +686,7 @@
 
     // Hide unread badge
     refs.badge = refs.shadow.getElementById("cf-badge");
-    refs.badge.classList.remove("visible");
+    if (refs.badge) refs.badge.classList.remove("visible");
 
     // Show greeting + quick replies on first open
     if (!state.greetingShown) {
@@ -833,9 +837,10 @@
 
   function clearInput() {
     refs.input.value = "";
-    // Reset textarea height
     refs.input.style.height = "";
     refs.input.style.height = refs.input.scrollHeight + "px";
+    // explicitly disable send button because input is empty
+    refs.sendBtn.disabled = true;
   }
 
   function autoResizeTextarea() {
@@ -987,6 +992,8 @@
   function finishStreaming() {
     state.isStreaming = false;
     setInputDisabled(false);
+    // ensure send button is disabled if input is empty after streaming
+    refs.sendBtn.disabled = !refs.input.value.trim();
     refs.input.focus();
   }
 
@@ -1013,7 +1020,7 @@
       styleEl.textContent = buildStyles(state.config.color);
 
       // Patch header text
-      refs.businessName.textContent = state.config.business_name;
+      if (refs.businessName) refs.businessName.textContent = state.config.business_name;
     } catch {
       // Silently fall back to defaults — widget still works
     }

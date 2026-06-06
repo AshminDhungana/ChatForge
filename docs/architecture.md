@@ -5,19 +5,24 @@
 ```
 chatforge/
 ├── docs/
-│   ├── architecture.md  # How the project is built
-│   └── install.md       # How to Setup
+│   ├── architecture.md    # System design and folder structure
+│   ├── install.md         # Setup and installation guide
+│   ├── todo.md            # Project roadmap and pending tasks
+│   └── user_guide.md      # User documentation for the chat widget
 ├── backend/
-│   ├── main.py          # FastAPI app, routes, and rate limiting
-│   ├── chat.py          # LangChain chat logic, streaming, and memory
-│   ├── fallback.py      # Rule-based NLP fallback engine
-│   ├── memory.py        # Per-session conversation memory manager
-│   └── config.py        # Environment config loader
+│   ├── main.py            # FastAPI application entry point and API routes
+│   ├── chat.py            # LangChain integration and chat orchestration
+│   ├── ai_health.py       # AI availability monitoring and auto-recovery
+│   ├── fallback.py        # Rule-based NLP engine for AI failover
+│   ├── memory.py          # Session-based conversation history management
+│   ├── models.py          # Pydantic data models for API requests/responses
+│   ├── config.py         # Environment variables and system configuration
+│   └── static/            # Static assets (e.g., favicon)
 ├── widget/
-│   ├── widget.js        # Embeddable chat widget (streaming + quick replies)
-│   └── index.html       # Widget demo and test page
-├── .env.example         # Full configuration template
-├── requirements.txt     # Python dependencies
-├── LICENSE              # License
-└── README.md            # Project documentation
+│   ├── widget.js          # Embeddable chat widget frontend logic
+│   └── index.html         # Widget demonstration and testing page
+├── .env.example           # Template for environment configuration
+├── requirements.txt       # Python project dependencies
+├── LICENSE                # Project license
+└── README.md              # Project overview and quick start
 ```
