@@ -451,8 +451,8 @@ Test these cases with curl:
 
 ## Phase 6 — Session Memory Manager
 
-**Goal:** Build `backend/memory.py` to manage per-session `ConversationBufferMemory`
-instances.
+**Goal:** Build `backend/memory.py` to manage per-session
+`ChatMessageHistory` instances using the modern LangChain API.
 
 **Why a separate file?** Multiple parts of the codebase (`chat.py`, eventually
 the stream endpoint) need to look up a session's memory. Centralising it avoids
@@ -460,67 +460,82 @@ duplicate dictionaries and makes cleanup easier.
 
 ### 6.1 What this module needs
 
-A single dictionary that maps `session_id` (string) to a
-`ConversationBufferMemory` instance:
+A thread-safe dictionary that maps `session_id` (string) to a
+`ChatMessageHistory` instance, with a bounded size to prevent memory leaks:
 
 ```python
-from langchain.memory import ConversationBufferMemory
+from threading import Lock
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
 
-_sessions: dict[str, ConversationBufferMemory] = {}
+_sessions: dict[str, ChatMessageHistory] = {}
+_lock = Lock()
 
-def get_memory(session_id: str) -> ConversationBufferMemory:
-    if session_id not in _sessions:
-        _sessions[session_id] = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True
-        )
-    return _sessions[session_id]
+MAX_SESSIONS = 1000  # prevent unbounded growth
+
+def get_session_history(session_id: str) -> BaseChatMessageHistory:
+    with _lock:
+        if session_id not in _sessions:
+            if len(_sessions) >= MAX_SESSIONS:
+                oldest = next(iter(_sessions))
+                del _sessions[oldest]
+            _sessions[session_id] = ChatMessageHistory()
+        return _sessions[session_id]
+
+def delete_session(session_id: str) -> None:
+    with _lock:
+        _sessions.pop(session_id, None)
 ```
 
-### 6.2 What `ConversationBufferMemory` does
+### 6.2 What `ChatMessageHistory` does
 
-It stores every message and reply in the session. When you pass it to
-LangChain's chat chain, it automatically includes the history in the prompt
-so the model remembers what was said earlier in the conversation.
+It stores every human message and AI reply for the session. When wrapped with
+`RunnableWithMessageHistory` (Phase 7), LangChain automatically injects the
+history into the prompt so the model remembers prior turns.
 
-`memory_key="chat_history"` is the variable name LangChain uses to inject the
-history into its prompt template. Keep it consistent — you'll reference this
-same key in Phase 7.
+`history_messages_key="chat_history"` is the variable name used in the prompt
+template. Keep it consistent — you'll reference this same key in Phase 7.
 
 ### 6.3 Memory lifetime
 
 Memory lives in-process (in Python's memory). It is automatically cleared when
-the server restarts. There is no database — this is intentional for the v1
-design.
+the server restarts. There is no database — intentional for the v1 design.
 
 ### ✅ Phase 6 Checkpoint
 
 ```python
-from backend.memory import get_memory
+from backend.memory import get_session_history
 
-m1 = get_memory("session-abc")
-m2 = get_memory("session-abc")
-m3 = get_memory("session-xyz")
+m1 = get_session_history("session-abc")
+m2 = get_session_history("session-abc")
+m3 = get_session_history("session-xyz")
 
-print(m1 is m2)  # True — same object returned for same session
+print(m1 is m2)  # True  — same object returned for same session
 print(m1 is m3)  # False — different session gets different memory
 ```
 
 - [ ] Same `session_id` always returns the same object
 - [ ] Different `session_id` values return different objects
+- [ ] `MAX_SESSIONS` cap prevents unbounded memory growth
+- [ ] `delete_session()` cleanly removes a session
 
 ---
 
 ## Phase 7 — LangChain AI Chat
 
-**Goal:** Build `backend/chat.py` with the LangChain integration. Update the
-chat endpoint to use the LLM when an API key is configured, falling back to
-Phase 3's engine when it isn't.
+**Goal:** Build `backend/chat.py` with the LangChain integration using the
+modern `RunnableWithMessageHistory` API. Update the chat endpoint to use the
+LLM when an API key is configured, falling back to Phase 3's engine when it
+isn't.
+
+> ⚠️ **Spec change:** The original spec used `ConversationChain` (deprecated
+> since v0.2.7) and `chain.arun()` (removed). Use `RunnableWithMessageHistory`
+> with LCEL (`prompt | llm`) and `.ainvoke()` instead.
 
 ### 7.1 What `chat.py` needs to do
 
 - Accept a `message` and `session_id`
-- Look up the session memory using Phase 6's `get_memory()`
+- Look up the session history using Phase 6's `get_session_history()`
 - If `API_KEY` is set: send the message to the LLM via LangChain and return the reply
 - If `API_KEY` is not set: call the fallback engine and return that reply
 - Return both the reply text and the mode (`"ai"` or `"fallback"`)
@@ -529,16 +544,32 @@ Phase 3's engine when it isn't.
 
 ```python
 from langchain_openai import ChatOpenAI
-from langchain.chains import ConversationChain
-from backend.config import API_KEY, API_BASE, MODEL, BUSINESS_NAME, BUSINESS_HOURS
-from backend.memory import get_memory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from backend.config import API_KEY, API_BASE, MODEL, BUSINESS_NAME, BUSINESS_HOURS, BUSINESS_PHONE
+from backend.memory import get_session_history
 
-def get_llm():
-    return ChatOpenAI(
+def _build_chain():
+    llm = ChatOpenAI(
         openai_api_key=API_KEY,
         openai_api_base=API_BASE,
         model_name=MODEL,
         streaming=False,
+    )
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{message}"),
+    ])
+
+    chain = prompt | llm
+
+    return RunnableWithMessageHistory(
+        chain,
+        get_session_history,
+        input_messages_key="message",
+        history_messages_key="chat_history",
     )
 
 async def get_chat_response(message: str, session_id: str) -> dict:
@@ -546,29 +577,30 @@ async def get_chat_response(message: str, session_id: str) -> dict:
         from backend.fallback import get_fallback_response
         return {"reply": get_fallback_response(message), "mode": "fallback"}
 
-    memory = get_memory(session_id)
-    chain = ConversationChain(llm=get_llm(), memory=memory)
-    reply = await chain.arun(message)
-    return {"reply": reply, "mode": "ai"}
+    chain_with_history = _build_chain()
+    result = await chain_with_history.ainvoke(
+        {"message": message},
+        config={"configurable": {"session_id": session_id}},
+    )
+    return {"reply": result.content, "mode": "ai"}
 ```
 
-### 7.3 Add a system prompt
+### 7.3 System prompt
 
-The LLM doesn't know it's a customer service bot for a specific business unless
-you tell it. Inject a system prompt using LangChain's `ConversationChain`
-prompt parameter. Build the prompt from your config values:
+Inject business context via the `ChatPromptTemplate` system message (not a
+separate `PromptTemplate` as in the old `ConversationChain` approach):
 
 ```python
-from langchain.prompts import PromptTemplate
-
-SYSTEM_PROMPT = f"""You are a helpful customer service assistant for {BUSINESS_NAME}.
-Business hours: {BUSINESS_HOURS}.
-Be concise, friendly, and only answer questions about this business.
-If you don't know something, direct the customer to call {BUSINESS_PHONE}."""
+SYSTEM_PROMPT = (
+    f"You are a helpful customer service assistant for {BUSINESS_NAME}. "
+    f"Business hours: {BUSINESS_HOURS}. "
+    f"Be concise, friendly, and only answer questions about this business. "
+    f"If you don't know something, direct the customer to call {BUSINESS_PHONE}."
+)
 ```
 
-Research how to pass a custom prompt to `ConversationChain` — this is a good
-chance to read the LangChain docs.
+This is defined at module level and baked into the prompt template inside
+`_build_chain()`.
 
 ### 7.4 Update the chat endpoint
 
@@ -579,7 +611,7 @@ from backend.chat import get_chat_response
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request):
-    validate_request(request, http_request)
+    await validate_request(request, http_request)
     result = await get_chat_response(request.message, request.session_id)
     return ChatResponse(**result)
 ```
@@ -596,12 +628,23 @@ async def chat(request: ChatRequest, http_request: Request):
    ```
 4. Restart the server
 
+### 7.6 Install updated dependencies
+
+```bash
+pip install langchain-core langchain-community langchain-openai
+```
+
+> The old `langchain.memory` and `langchain.chains` imports are part of the
+> legacy `langchain` package. The modern split packages (`langchain-core`,
+> `langchain-community`, `langchain-openai`) are actively maintained.
+
 ### ✅ Phase 7 Checkpoint
 
 - [ ] With `API_KEY` set: chat endpoint returns `"mode": "ai"` and a real LLM reply
 - [ ] With `API_KEY` removed from `.env`: endpoint returns `"mode": "fallback"` without crashing
 - [ ] Sending two messages in the same session — the second reply references context from the first
 - [ ] Two different `session_id` values don't share conversation history
+- [ ] No deprecation warnings in the server logs
 
 ---
 
