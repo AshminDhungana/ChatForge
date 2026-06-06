@@ -85,7 +85,7 @@ example business (Mario's Pizza) for now. You will fill in the AI keys later.
 ### ✅ Phase 0 Checkpoint
 
 - [x] Running `python --version` inside `venv` shows 3.10+
-- [x] Running `pip list` shows fastapi, uvicorn, langchain, and langchain-openai
+- [x] Running `pip list` shows fastapi, uvicorn, langchain-openai, and **langgraph==1.2.4**
 - [x] A `.env` file exists in the project root
 - [x] You can describe what each file in `backend/` is for
 
@@ -241,8 +241,8 @@ works with zero AI configuration.
 
 **Why build this before the AI chat?** The fallback is simpler (no external
 API calls, no async code) and it lets you test the full request/response cycle
-before adding the complexity of LangChain. You will use it to verify your chat
-endpoint works before wiring up the LLM.
+before adding the complexity of the LLM. You will use it to verify your chat
+endpoint works before wiring up the model.
 
 ### 3.1 What the fallback engine does
 
@@ -306,7 +306,7 @@ print(get_fallback_response("asdfghjkl"))  # Should return contact info, not cra
 and returns a response — using the fallback engine for now.
 
 **Why before AI?** This gets the full request/response cycle working end-to-end
-so you can test it with real HTTP calls. Plugging in the LLM in Phase 5 will
+so you can test it with real HTTP calls. Plugging in the LLM in Phase 7 will
 then be a contained change to one function, not a structural change.
 
 ### 4.1 Define the request and response models
@@ -451,86 +451,95 @@ Test these cases with curl:
 
 ## Phase 6 — Session Memory Manager
 
-**Goal:** Build `backend/memory.py` to manage per-session
-`ChatMessageHistory` instances using the modern LangChain API.
+**Goal:** Build `backend/memory.py` to provide a LangGraph-native checkpointer
+that persists full conversation state per session.
 
-**Why a separate file?** Multiple parts of the codebase (`chat.py`, eventually
-the stream endpoint) need to look up a session's memory. Centralising it avoids
-duplicate dictionaries and makes cleanup easier.
+**Why a separate file?** Both the non-streaming and streaming chat paths need
+to share the same state store. Centralising the checkpointer ensures a single
+source of truth for session history and makes cleanup straightforward.
 
 ### 6.1 What this module needs
 
-A thread-safe dictionary that maps `session_id` (string) to a
-`ChatMessageHistory` instance, with a bounded size to prevent memory leaks:
+A single shared `MemorySaver` instance from `langgraph.checkpoint.memory`.
+This is LangGraph's built-in in-memory checkpointer that stores the complete
+graph state (including the message list) keyed by `thread_id`, which maps
+1-to-1 with `session_id`.
 
 ```python
-from threading import Lock
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
+from langgraph.checkpoint.memory import MemorySaver
 
-_sessions: dict[str, ChatMessageHistory] = {}
-_lock = Lock()
-
-MAX_SESSIONS = 1000  # prevent unbounded growth
-
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
-    with _lock:
-        if session_id not in _sessions:
-            if len(_sessions) >= MAX_SESSIONS:
-                oldest = next(iter(_sessions))
-                del _sessions[oldest]
-            _sessions[session_id] = ChatMessageHistory()
-        return _sessions[session_id]
+# Single shared checkpointer — created once at import time.
+# MemorySaver is safe for concurrent async access without an explicit lock.
+checkpointer = MemorySaver()
 
 def delete_session(session_id: str) -> None:
-    with _lock:
-        _sessions.pop(session_id, None)
+    """
+    Remove all checkpoint data for a session.
+
+    MemorySaver stores state in a flat dict keyed by thread_id.
+    Deleting the entry clears the full conversation history for that session.
+    """
+    checkpointer.storage.pop(session_id, None)
 ```
 
-### 6.2 What `ChatMessageHistory` does
+### 6.2 What `MemorySaver` does
 
-It stores every human message and AI reply for the session. When wrapped with
-`RunnableWithMessageHistory` (Phase 7), LangChain automatically injects the
-history into the prompt so the model remembers prior turns.
+When a `StateGraph` is compiled with `checkpointer=checkpointer` and invoked
+with `config={"configurable": {"thread_id": session_id}}`, LangGraph
+automatically:
 
-`history_messages_key="chat_history"` is the variable name used in the prompt
-template. Keep it consistent — you'll reference this same key in Phase 7.
+1. Retrieves the existing state for that `thread_id` before the run starts.
+2. Appends new messages via the `MessagesState` `add_messages` reducer during
+   execution.
+3. Writes the updated state back to the checkpointer after the run completes.
+
+The entire conversation history is managed by LangGraph — no manual dictionary,
+no locking, and no message list maintenance required.
 
 ### 6.3 Memory lifetime
 
-Memory lives in-process (in Python's memory). It is automatically cleared when
-the server restarts. There is no database — intentional for the v1 design.
+State lives in-process (in `MemorySaver`'s internal storage). It is
+automatically cleared when the server restarts. There is no database —
+intentional for the v1 design. Call `delete_session()` to explicitly clear a
+session and prevent unbounded growth in long-running servers.
 
 ### ✅ Phase 6 Checkpoint
 
 ```python
-from backend.memory import get_session_history
+from backend.memory import checkpointer
+from langgraph.graph import StateGraph, MessagesState, START, END
+from langchain_core.messages import HumanMessage
 
-m1 = get_session_history("session-abc")
-m2 = get_session_history("session-abc")
-m3 = get_session_history("session-xyz")
+# Verify checkpointer type
+print(type(checkpointer))  # <class 'langgraph.checkpoint.memory.MemorySaver'>
 
-print(m1 is m2)  # True  — same object returned for same session
-print(m1 is m3)  # False — different session gets different memory
+# Build a minimal graph to test state persistence
+builder = StateGraph(MessagesState)
+builder.add_node("test", lambda state: {"messages": [HumanMessage(content="hi")]})
+builder.add_edge(START, "test")
+builder.add_edge("test", END)
+graph = builder.compile(checkpointer=checkpointer)
+
+config = {"configurable": {"thread_id": "session-abc"}}
+r1 = graph.invoke({"messages": []}, config=config)
+r2 = graph.invoke({"messages": []}, config=config)
+
+print(len(r1["messages"]))  # 1
+print(len(r2["messages"]))  # 2  — history was persisted across invocations
 ```
 
-- [x] Same `session_id` always returns the same object
-- [x] Different `session_id` values return different objects
-- [x] `MAX_SESSIONS` cap prevents unbounded memory growth
+- [x] `checkpointer` is a `MemorySaver` instance
+- [x] Same `thread_id` accumulates state across invocations
+- [x] Different `thread_id` values start with fresh state
 - [x] `delete_session()` cleanly removes a session
 
 ---
 
-## Phase 7 — LangChain AI Chat
+## Phase 7 — LangGraph AI Chat
 
-**Goal:** Build `backend/chat.py` with the LangChain integration using the
-modern `RunnableWithMessageHistory` API. Update the chat endpoint to use the
-LLM when an API key is configured, falling back to Phase 3's engine when it
-isn't.
-
-> ⚠️ **Spec change:** The original spec used `ConversationChain` (deprecated
-> since v0.2.7) and `chain.arun()` (removed). Use `RunnableWithMessageHistory`
-> with LCEL (`prompt | llm`) and `.ainvoke()` instead.
+**Goal:** Build `backend/chat.py` with the LangGraph integration using the
+modern `StateGraph` API. Update the chat endpoint to use the LLM when an API
+key is configured, falling back to Phase 3's engine when it isn't.
 
 ### 7.1 Provider compatibility — any OpenAI-format API works
 
@@ -539,7 +548,7 @@ provider that exposes an OpenAI-compatible endpoint works as a drop-in by
 setting `API_BASE` and `MODEL` in `.env`. **No code changes required between
 providers** — only `.env` values change.
 
-The two required config values are:
+The three required config values are:
 
 | Config key | What it controls                            |
 | ---------- | ------------------------------------------- |
@@ -582,59 +591,108 @@ MODEL="llama3"
 ### 7.2 What `chat.py` needs to do
 
 - Accept a `message` and `session_id`
-- Look up the session history using Phase 6's `get_session_history()`
-- If `API_KEY` is set: send the message to the LLM via LangChain and return the reply
+- If `API_KEY` is set: send the message through the compiled LangGraph and
+  return the LLM reply
 - If `API_KEY` is not set: call the fallback engine and return that reply
 - Return both the reply text and the mode (`"ai"` or `"fallback"`)
 
-### 7.3 Setting up the LangChain chain
+### 7.3 Setting up the LangGraph chat graph
+
+LangGraph replaces legacy LCEL chains and `RunnableWithMessageHistory` with a
+state-machine approach. We define a `StateGraph(MessagesState)` where
+`MessagesState` is a TypedDict with a `messages` field annotated with
+`add_messages`. This reducer automatically appends new messages to existing
+history instead of replacing it.
+
+**Graph topology:** `START → call_model → END` (single-node chat loop)
+
+The `call_model` node:
+
+- Receives the full `messages` list from `state` (already restored by the
+  checkpointer for this `thread_id`).
+- Prepends a `SystemMessage` with business context. This is done **inside the
+  node** so the system prompt is never stored in the checkpointer, avoiding
+  duplication on every turn.
+- Calls the LLM via `await llm.ainvoke(messages)`.
+- Returns `{"messages": [AIMessage(...)]}` which the `add_messages` reducer
+  appends to state.
+
+Two compiled graphs are created at module load:
+
+- `_graph` — for `ainvoke()` (non-streaming)
+- `_streaming_graph` — for `astream_events()` (streaming)
+
+Both share the **same** `MemorySaver` checkpointer from Phase 6, so session
+history is unified across both paths.
 
 ```python
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from backend.config import API_KEY, API_BASE, MODEL, BUSINESS_NAME, BUSINESS_HOURS, BUSINESS_PHONE
-from backend.memory import get_session_history
+from openai import AuthenticationError
+from langgraph.graph import StateGraph, MessagesState, START, END
 
-SYSTEM_PROMPT = (
+from backend.config import (
+    API_KEY, API_BASE, MODEL,
+    BUSINESS_NAME, BUSINESS_DESCRIPTION,
+    BUSINESS_HOURS, BUSINESS_PHONE,
+)
+from backend.memory import checkpointer
+
+_SYSTEM_PROMPT = (
     f"You are a helpful customer service assistant for {BUSINESS_NAME}. "
+    f"About us: {BUSINESS_DESCRIPTION}. "
     f"Business hours: {BUSINESS_HOURS}. "
     f"Be concise, friendly, and only answer questions about this business. "
     f"If you don't know something, direct the customer to call {BUSINESS_PHONE}."
 )
 
-def _build_chain():
-    llm = ChatOpenAI(
+def _build_llm(streaming: bool = False) -> ChatOpenAI:
+    return ChatOpenAI(
         openai_api_key=API_KEY,
-        openai_api_base=API_BASE or None,   # None = use OpenAI's default endpoint
+        openai_api_base=API_BASE or None,   # None → OpenAI's default endpoint
         model_name=MODEL,
-        streaming=False,
+        streaming=streaming,
     )
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{message}"),
-    ])
+def _make_graph(streaming: bool = False):
+    llm = _build_llm(streaming=streaming)
 
-    return RunnableWithMessageHistory(
-        prompt | llm,
-        get_session_history,
-        input_messages_key="message",
-        history_messages_key="chat_history",
-    )
+    async def call_model(state: MessagesState) -> dict:
+        messages = [SystemMessage(content=_SYSTEM_PROMPT)] + state["messages"]
+        response: AIMessage = await llm.ainvoke(messages)
+        return {"messages": [response]}
+
+    builder = StateGraph(MessagesState)
+    builder.add_node("call_model", call_model)
+    builder.add_edge(START, "call_model")
+    builder.add_edge("call_model", END)
+
+    return builder.compile(checkpointer=checkpointer)
+
+# Compile once at import time — thread-safe for concurrent async requests.
+_graph = _make_graph(streaming=False)
+_streaming_graph = _make_graph(streaming=True)
+
+def _thread_config(session_id: str) -> dict:
+    """LangGraph config dict that scopes the checkpointer to a session."""
+    return {"configurable": {"thread_id": session_id}}
 
 async def get_chat_response(message: str, session_id: str) -> dict:
     if not API_KEY:
         from backend.fallback import get_fallback_response
         return {"reply": get_fallback_response(message), "mode": "fallback"}
 
-    chain_with_history = _build_chain()
-    result = await chain_with_history.ainvoke(
-        {"message": message},
-        config={"configurable": {"session_id": session_id}},
-    )
-    return {"reply": result.content, "mode": "ai"}
+    try:
+        result = await _graph.ainvoke(
+            {"messages": [HumanMessage(content=message)]},
+            config=_thread_config(session_id),
+        )
+        # result["messages"][-1] is the AIMessage added by call_model
+        return {"reply": result["messages"][-1].content, "mode": "ai"}
+
+    except AuthenticationError:
+        from backend.fallback import get_fallback_response
+        return {"reply": get_fallback_response(message), "mode": "fallback"}
 ```
 
 Key details:
@@ -642,7 +700,9 @@ Key details:
 - `openai_api_base=API_BASE or None` — an empty string in `.env` safely
   becomes `None`, which makes `ChatOpenAI` fall back to OpenAI's default URL.
 - `openai_api_key` — passed straight from config; never hardcoded.
-- The same `_build_chain()` function works for every provider; switching
+- The system prompt is prepended inside the graph node, not injected via a
+  prompt template, eliminating prompt-template overhead and checkpointer bloat.
+- The same `_make_graph()` function works for every provider; switching
   providers is purely a `.env` change.
 
 ### 7.4 Update the chat endpoint
@@ -662,13 +722,13 @@ async def chat(request: ChatRequest, http_request: Request):
 ### 7.5 Install updated dependencies
 
 ```bash
-pip install langchain-core langchain-community langchain-openai
+pip install langgraph==1.2.4 langchain-core langchain-openai
 ```
 
-> The old `langchain.memory` and `langchain.chains` imports are part of the
-> legacy `langchain` package. The modern split packages (`langchain-core`,
-> `langchain-community`, `langchain-openai`) are actively maintained and work
-> with every OpenAI-compatible provider.
+> LangGraph 1.2.4 is the orchestration layer. `langchain-core` provides message
+> types and the `ChatOpenAI` interface lives in `langchain-openai`. No legacy
+> `langchain` or `langchain-community` packages are required for the chat and
+> memory stack.
 
 ### ✅ Phase 7 Checkpoint
 
@@ -701,30 +761,61 @@ data: <token>\n\n
 
 The client reads these chunks one by one and appends each token to the UI.
 
-### 8.2 LangChain streaming with `astream()`
+### 8.2 LangGraph streaming with `astream_events()`
+
+LangGraph provides `astream_events(version="v2")` which emits fine-grained
+events during graph execution. For streaming LLM tokens, filter for the
+`"on_chat_model_stream"` event, which fires once per token from the model.
+
+The graph state and checkpointer still manage history automatically during
+streaming — after the stream completes, the full assistant message is written
+to the checkpointer just like in the non-streaming path.
 
 ```python
 from fastapi.responses import StreamingResponse
 
-async def stream_generator(message: str, session_id: str):
-    memory = get_memory(session_id)
-    chain = ConversationChain(llm=get_llm(), memory=memory)
-    async for chunk in chain.astream(message):
-        token = chunk.get("response", "")
-        if token:
-            yield f"data: {token}\n\n"
+async def stream_chat_response(message: str, session_id: str):
+    if not API_KEY:
+        from backend.fallback import get_fallback_response
+        reply = get_fallback_response(message)
+        yield f"data: {reply}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+
+    try:
+        async for event in _streaming_graph.astream_events(
+            {"messages": [HumanMessage(content=message)]},
+            config=_thread_config(session_id),
+            version="v2",                       # recommended; v1 is deprecated
+        ):
+            if event["event"] == "on_chat_model_stream":
+                token: str = event["data"]["chunk"].content
+                if token:
+                    yield f"data: {token}\n\n"
+
+    except AuthenticationError:
+        from backend.fallback import get_fallback_response
+        reply = get_fallback_response(message)
+        yield f"data: {reply}\n\n"
+
+    yield "data: [DONE]\n\n"
 
 @app.post("/api/v1/chat/stream")
 async def chat_stream(request: ChatRequest, http_request: Request):
-    validate_request(request, http_request)
+    await validate_request(request, http_request)
     return StreamingResponse(
-        stream_generator(request.message, request.session_id),
-        media_type="text/event-stream"
+        stream_chat_response(request.message, request.session_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 ```
 
 > **Note:** Streaming only works when `API_KEY` is set. If there's no API key,
-> fall back to returning the full fallback response as a single SSE chunk.
+> the generator falls back to yielding the full fallback response as a single
+> SSE chunk followed by the terminal `data: [DONE]\n\n` sentinel.
 
 ### 8.3 Test streaming manually
 
@@ -742,8 +833,6 @@ You should see tokens appearing one by one in the terminal output.
 - [x] Tokens appear incrementally in the terminal (not all at once)
 - [x] Streaming with no `API_KEY` still returns something — it doesn't hang or crash
 - [x] Memory is updated after a streamed conversation (next message has context)
-
-- Updated memeory.py and chat.py to use langgraph.
 
 ---
 
@@ -1025,13 +1114,14 @@ Once you've completed Phase 12, these are good stretch goals:
 
 ## Quick Reference
 
-| Command                                    | What it does                             |
-| ------------------------------------------ | ---------------------------------------- |
-| `source venv/bin/activate`                 | Activate virtual environment (Mac/Linux) |
-| `venv\Scripts\activate`                    | Activate virtual environment (Windows)   |
-| `pip install -r requirements.txt`          | Install dependencies                     |
-| `uvicorn backend.main:app --reload`        | Start dev server with auto-reload        |
-| `python -c "from backend.config import *"` | Smoke-test config loading                |
+| Command                                                                          | What it does                                       |
+| -------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `source venv/bin/activate`                                                       | Activate virtual environment (Mac/Linux)           |
+| `venv\Scripts\activate`                                                          | Activate virtual environment (Windows)             |
+| `pip install -r requirements.txt`                                                | Install dependencies (must pin `langgraph==1.2.4`) |
+| `uvicorn backend.main:app --reload`                                              | Start dev server with auto-reload                  |
+| `python -c "from backend.config import *"`                                       | Smoke-test config loading                          |
+| `python -c "from backend.memory import checkpointer; print(type(checkpointer))"` | Verify LangGraph checkpointer                      |
 
 | URL                                        | What it is              |
 | ------------------------------------------ | ----------------------- |
@@ -1047,7 +1137,7 @@ Once you've completed Phase 12, these are good stretch goals:
 | `backend/config.py`   | Phase 1 — env loader                                        |
 | `backend/main.py`     | Phases 2, 4, 5, 9 — server, routes, security, rate limiting |
 | `backend/fallback.py` | Phase 3 — rule-based NLP                                    |
-| `backend/memory.py`   | Phase 6 — session memory manager                            |
-| `backend/chat.py`     | Phase 7 — LangChain AI integration                          |
+| `backend/memory.py`   | Phase 6 — LangGraph MemorySaver checkpointer                |
+| `backend/chat.py`     | Phase 7 — LangGraph AI integration                          |
 | `widget/widget.js`    | Phase 10 — embeddable UI                                    |
 | `widget/index.html`   | Phase 10 — demo/test page                                   |

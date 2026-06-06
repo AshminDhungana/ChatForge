@@ -1,27 +1,42 @@
-from threading import Lock
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
+"""
+memory.py — ChatForge Session Memory (LangGraph)
+=================================================
+Provides a single shared MemorySaver checkpointer that LangGraph uses to
+persist conversation state across turns.
 
-# --- In-memory store with a lock for thread safety ---
-_sessions: dict[str, ChatMessageHistory] = {}
-_lock = Lock()
+LangGraph 1.2.4 replaces the old manual ChatMessageHistory + dict approach:
+  - MemorySaver  stores the full graph state (including message history)
+               keyed by thread_id, which maps 1-to-1 with session_id.
+  - No manual locking, no eviction loop — LangGraph manages it internally.
+  - The same checkpointer instance is shared across all requests; it is
+    thread-safe for concurrent async use.
 
-MAX_SESSIONS = 1000  # guard against unbounded growth
+Public surface
+--------------
+  checkpointer   — pass to graph.compile(checkpointer=checkpointer)
+  delete_session — drop a session (e.g. on logout / conversation end)
+"""
 
+from langgraph.checkpoint.memory import MemorySaver
 
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
-    """Get or create a ChatMessageHistory for the given session_id."""
-    with _lock:
-        if session_id not in _sessions:
-            if len(_sessions) >= MAX_SESSIONS:
-                # Evict the oldest session
-                oldest = next(iter(_sessions))
-                del _sessions[oldest]
-            _sessions[session_id] = ChatMessageHistory()
-        return _sessions[session_id]
+# ---------------------------------------------------------------------------
+# Single shared checkpointer — created once at import time.
+# MemorySaver (aliased to InMemorySaver in LangGraph 1.2.4) is safe for
+# concurrent async access without an explicit lock.
+# ---------------------------------------------------------------------------
+
+checkpointer = MemorySaver()
 
 
 def delete_session(session_id: str) -> None:
-    """Explicitly remove a session (e.g. on logout or conversation end)."""
-    with _lock:
-        _sessions.pop(session_id, None)
+    """
+    Remove all checkpoint data for a session.
+
+    MemorySaver (LangGraph 1.2.4) stores state in a flat dict keyed by
+    thread_id. Deleting the entry clears the full conversation history for
+    that session.
+
+    Called on logout or explicit conversation reset — not required for normal
+    operation, but prevents unbounded memory growth in long-running servers.
+    """
+    checkpointer.storage.pop(session_id, None)
