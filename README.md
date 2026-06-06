@@ -8,6 +8,9 @@
 
 ChatForge is a lightweight, embeddable chatbot powered by LangChain and any OpenAI-compatible API. Drop it onto any website in minutes — no complex setup, no vendor lock-in.
 
+[![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=flat-square)](https://github.com/AshminDhungana/chatforge/releases)
+[![Status](https://img.shields.io/badge/Status-Stable-success?style=flat-square)]()
+
 <br/>
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -100,7 +103,7 @@ Add this single line to any page's HTML:
 ```html
 <script
   src="http://localhost:8000/widget.js"
-  data-project-id="marios-pizza"
+  data-project-id="Ashmin-Office"
   data-widget-key="your-random-secret"
 ></script>
 ```
@@ -121,13 +124,13 @@ Copy `.env.example` to `.env` and fill in your details:
 | `BUSINESS_PHONE`       | Yes      | Contact phone number                                                                  |
 | `BUSINESS_ADDRESS`     | Yes      | Physical address                                                                      |
 | `BUSINESS_WEBSITE`     | Yes      | Your website URL                                                                      |
-| `PROJECT_ID`           | Yes      | Unique identifier for this chatbot instance, e.g. `marios-pizza`                      |
+| `PROJECT_ID`           | Yes      | Unique identifier for this chatbot instance, e.g. `ashmin-office`                     |
 | `ALLOWED_DOMAINS`      | Yes      | Comma-separated list of domains allowed to embed the widget                           |
 | `WIDGET_API_KEY`       | No       | Secret key for widget authentication — recommended for production                     |
 | `QUICK_REPLIES`        | No       | Comma-separated shortcut button labels shown at chat start                            |
 | `API_KEY`              | No       | Your LLM provider API key — leave blank to use the fallback engine                    |
 | `API_BASE`             | No       | Base URL of your LLM provider — see [Supported AI Providers](#supported-ai-providers) |
-| `MODEL`                | No       | Model name to use, e.g. `llama3-8b-8192`                                              |
+| `MODEL`                | No       | Model name to use, e.g. `llama-3.1-8b-instant`                                        |
 | `WIDGET_COLOR`         | No       | Hex color for the chat widget, e.g. `#2563EB`                                         |
 | `GREETING_MESSAGE`     | No       | First message shown to visitors when the widget opens                                 |
 | `RATE_LIMIT`           | No       | Max requests per session per minute, e.g. `20/minute` (default: `20/minute`)          |
@@ -141,8 +144,8 @@ ChatForge supports lightweight widget authentication without requiring a databas
 Configure the following variables:
 
 ```env
-PROJECT_ID="marios-pizza"
-ALLOWED_DOMAINS="mariospizza.com,www.mariospizza.com"
+PROJECT_ID="ashmin-office"
+ALLOWED_DOMAINS="ashmindhungana.com,www.dhungana_ashmin.com"
 WIDGET_API_KEY="your-random-secret"
 ```
 
@@ -172,7 +175,7 @@ POST /api/v1/chat
 {
   "message": "What are your opening hours?",
   "session_id": "uuid-per-visitor",
-  "project_id": "marios-pizza",
+  "project_id": "ashmin-office",
   "widget_key": "your-random-secret"
 }
 ```
@@ -275,27 +278,9 @@ pip install -r requirements.txt
 
 ---
 
-## Roadmap
+## 📖 User Guide
 
-**Shipped**
-
-- [x] FastAPI backend with Uvicorn
-- [x] LangChain integration with any OpenAI-compatible API
-- [x] NLP fallback engine
-- [x] Embeddable Vanilla JS widget
-- [x] Streaming responses
-- [x] Per-session conversation memory
-- [x] Session isolation via UUID
-- [x] Configurable quick reply buttons
-- [x] Per-session rate limiting
-- [x] Full `.env` configuration with all provider URLs
-
-**Coming Soon**
-
-- [ ] Widget theme builder (colors, position, avatar)
-- [ ] One-click deploy (Railway / Render)
-- [ ] Multi-language auto-detection
-- [ ] Business hours awareness
+New to ChatForge? Check out the **[User Guide](docs/user_guide.md)** for a detailed walkthrough for setting it up for your business.
 
 ---
 

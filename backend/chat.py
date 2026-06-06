@@ -63,11 +63,12 @@ def _make_graph(streaming: bool = False):
     """
     Build and compile a LangGraph chat graph.
 
-    Two separate compiled graphs are created at module load:
-      _graph          — for ainvoke()  (non-streaming)
-      _streaming_graph — for astream_events()  (streaming)
+    Graphs are created lazily on first use (via _get_graph) rather than at
+    module load, so a missing API_KEY does not crash the server on startup —
+    the fallback path in get_chat_response / stream_chat_response handles it
+    before _get_graph is ever called.
 
-    Both share the same checkpointer, so session history is unified.
+    Both graphs share the same checkpointer, so session history is unified.
     """
     llm = _build_llm(streaming=streaming)
 
@@ -92,9 +93,28 @@ def _make_graph(streaming: bool = False):
     return builder.compile(checkpointer=checkpointer)
 
 
-# Compile once at import time — thread-safe for concurrent async requests.
-_graph = _make_graph(streaming=False)
-_streaming_graph = _make_graph(streaming=True)
+# ---------------------------------------------------------------------------
+# Lazy graph cache — graphs are built on first use, not at import time.
+# This allows the server to start successfully even when API_KEY is empty,
+# because the fallback guards in get_chat_response / stream_chat_response
+# run before _get_graph() is ever called.
+# ---------------------------------------------------------------------------
+
+_graph = None
+_streaming_graph = None
+
+
+def _get_graph(streaming: bool = False):
+    """Return the compiled graph for the requested mode, building it on first call."""
+    global _graph, _streaming_graph
+    if streaming:
+        if _streaming_graph is None:
+            _streaming_graph = _make_graph(streaming=True)
+        return _streaming_graph
+    else:
+        if _graph is None:
+            _graph = _make_graph(streaming=False)
+        return _graph
 
 
 # Helpers
@@ -117,7 +137,7 @@ async def get_chat_response(message: str, session_id: str) -> dict:
         return {"reply": get_fallback_response(message), "mode": "fallback"}
 
     try:
-        result = await _graph.ainvoke(
+        result = await _get_graph(streaming=False).ainvoke(
             {"messages": [HumanMessage(content=message)]},
             config=_thread_config(session_id),
         )
@@ -149,7 +169,7 @@ async def stream_chat_response(
         return
 
     try:
-        async for event in _streaming_graph.astream_events(
+        async for event in _get_graph(streaming=True).astream_events(
             {"messages": [HumanMessage(content=message)]},
             config=_thread_config(session_id),
             version="v2",                       # v1 is deprecated

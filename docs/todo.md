@@ -995,12 +995,12 @@ Open this file in your browser to test the full end-to-end experience.
 
 ### ✅ Phase 10 Checkpoint
 
-- [ ] Opening `http://localhost:8000` shows the demo page with the chat bubble
-- [ ] Clicking the bubble opens the chat panel
-- [ ] Quick reply buttons appear and work
-- [ ] Typing a message and submitting shows a streaming reply
-- [ ] The widget colour matches `WIDGET_COLOR` in `.env`
-- [ ] Refreshing the page starts a new session (conversation history resets)
+- [x] Opening `http://localhost:8000` shows the demo page with the chat bubble
+- [x] Clicking the bubble opens the chat panel
+- [x] Quick reply buttons appear and work
+- [x] Typing a message and submitting shows a streaming reply
+- [x] The widget colour matches `WIDGET_COLOR` in `.env`
+- [x] Refreshing the page starts a new session (conversation history resets)
 
 ---
 
