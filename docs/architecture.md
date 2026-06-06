@@ -6,7 +6,6 @@
 chatforge/
 ├── docs/
 │   ├── architecture.md    # System design and folder structure
-│   ├── install.md         # Setup and installation guide
 │   ├── todo.md            # Project roadmap and pending tasks
 │   └── user_guide.md      # User documentation for the chat widget
 ├── backend/
