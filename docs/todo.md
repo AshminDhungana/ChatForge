@@ -532,7 +532,54 @@ isn't.
 > since v0.2.7) and `chain.arun()` (removed). Use `RunnableWithMessageHistory`
 > with LCEL (`prompt | llm`) and `.ainvoke()` instead.
 
-### 7.1 What `chat.py` needs to do
+### 7.1 Provider compatibility — any OpenAI-format API works
+
+`ChatOpenAI` from `langchain-openai` speaks the OpenAI REST format. Any
+provider that exposes an OpenAI-compatible endpoint works as a drop-in by
+setting `API_BASE` and `MODEL` in `.env`. **No code changes required between
+providers** — only `.env` values change.
+
+The two required config values are:
+
+| Config key | What it controls                            |
+| ---------- | ------------------------------------------- |
+| `API_KEY`  | The secret key issued by your provider      |
+| `API_BASE` | The provider's base URL (must end at `/v1`) |
+| `MODEL`    | The model name as the provider labels it    |
+
+`API_BASE` defaults to `None`, which makes `ChatOpenAI` use OpenAI's own
+endpoint automatically. Set it to override.
+
+**Example `.env` values for common providers:**
+
+```ini
+# Groq (free tier, fast)
+API_KEY="gsk_..."
+API_BASE="https://api.groq.com/openai/v1"
+MODEL="llama3-8b-8192"
+
+# OpenAI
+API_KEY="sk-..."
+API_BASE=""          # leave blank — ChatOpenAI defaults to OpenAI
+MODEL="gpt-4o-mini"
+
+# OpenRouter (routes to many models)
+API_KEY="sk-or-..."
+API_BASE="https://openrouter.ai/api/v1"
+MODEL="mistralai/mistral-7b-instruct"
+
+# Together AI
+API_KEY="..."
+API_BASE="https://api.together.xyz/v1"
+MODEL="meta-llama/Llama-3-8b-chat-hf"
+
+# Ollama (local, no key needed)
+API_KEY="ollama"     # any non-empty string to satisfy validation
+API_BASE="http://localhost:11434/v1"
+MODEL="llama3"
+```
+
+### 7.2 What `chat.py` needs to do
 
 - Accept a `message` and `session_id`
 - Look up the session history using Phase 6's `get_session_history()`
@@ -540,7 +587,7 @@ isn't.
 - If `API_KEY` is not set: call the fallback engine and return that reply
 - Return both the reply text and the mode (`"ai"` or `"fallback"`)
 
-### 7.2 Setting up the LangChain chain
+### 7.3 Setting up the LangChain chain
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -549,10 +596,17 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from backend.config import API_KEY, API_BASE, MODEL, BUSINESS_NAME, BUSINESS_HOURS, BUSINESS_PHONE
 from backend.memory import get_session_history
 
+SYSTEM_PROMPT = (
+    f"You are a helpful customer service assistant for {BUSINESS_NAME}. "
+    f"Business hours: {BUSINESS_HOURS}. "
+    f"Be concise, friendly, and only answer questions about this business. "
+    f"If you don't know something, direct the customer to call {BUSINESS_PHONE}."
+)
+
 def _build_chain():
     llm = ChatOpenAI(
         openai_api_key=API_KEY,
-        openai_api_base=API_BASE,
+        openai_api_base=API_BASE or None,   # None = use OpenAI's default endpoint
         model_name=MODEL,
         streaming=False,
     )
@@ -563,10 +617,8 @@ def _build_chain():
         ("human", "{message}"),
     ])
 
-    chain = prompt | llm
-
     return RunnableWithMessageHistory(
-        chain,
+        prompt | llm,
         get_session_history,
         input_messages_key="message",
         history_messages_key="chat_history",
@@ -585,22 +637,13 @@ async def get_chat_response(message: str, session_id: str) -> dict:
     return {"reply": result.content, "mode": "ai"}
 ```
 
-### 7.3 System prompt
+Key details:
 
-Inject business context via the `ChatPromptTemplate` system message (not a
-separate `PromptTemplate` as in the old `ConversationChain` approach):
-
-```python
-SYSTEM_PROMPT = (
-    f"You are a helpful customer service assistant for {BUSINESS_NAME}. "
-    f"Business hours: {BUSINESS_HOURS}. "
-    f"Be concise, friendly, and only answer questions about this business. "
-    f"If you don't know something, direct the customer to call {BUSINESS_PHONE}."
-)
-```
-
-This is defined at module level and baked into the prompt template inside
-`_build_chain()`.
+- `openai_api_base=API_BASE or None` — an empty string in `.env` safely
+  becomes `None`, which makes `ChatOpenAI` fall back to OpenAI's default URL.
+- `openai_api_key` — passed straight from config; never hardcoded.
+- The same `_build_chain()` function works for every provider; switching
+  providers is purely a `.env` change.
 
 ### 7.4 Update the chat endpoint
 
@@ -616,19 +659,7 @@ async def chat(request: ChatRequest, http_request: Request):
     return ChatResponse(**result)
 ```
 
-### 7.5 Get a free API key from Groq
-
-1. Go to https://console.groq.com and sign up (no credit card required)
-2. Create an API key
-3. Add to your `.env`:
-   ```
-   API_KEY="your-key-here"
-   API_BASE="https://api.groq.com/openai/v1"
-   MODEL="llama3-8b-8192"
-   ```
-4. Restart the server
-
-### 7.6 Install updated dependencies
+### 7.5 Install updated dependencies
 
 ```bash
 pip install langchain-core langchain-community langchain-openai
@@ -636,15 +667,17 @@ pip install langchain-core langchain-community langchain-openai
 
 > The old `langchain.memory` and `langchain.chains` imports are part of the
 > legacy `langchain` package. The modern split packages (`langchain-core`,
-> `langchain-community`, `langchain-openai`) are actively maintained.
+> `langchain-community`, `langchain-openai`) are actively maintained and work
+> with every OpenAI-compatible provider.
 
 ### ✅ Phase 7 Checkpoint
 
-- [ ] With `API_KEY` set: chat endpoint returns `"mode": "ai"` and a real LLM reply
-- [ ] With `API_KEY` removed from `.env`: endpoint returns `"mode": "fallback"` without crashing
-- [ ] Sending two messages in the same session — the second reply references context from the first
-- [ ] Two different `session_id` values don't share conversation history
-- [ ] No deprecation warnings in the server logs
+- [x] With `API_KEY` set: chat endpoint returns `"mode": "ai"` and a real LLM reply
+- [x] With `API_KEY` removed from `.env`: endpoint returns `"mode": "fallback"` without crashing
+- [x] Sending two messages in the same session — the second reply references context from the first
+- [x] Two different `session_id` values don't share conversation history
+- [x] Swapping provider (e.g. Groq → OpenRouter) requires only `.env` changes — no code edits
+- [x] No deprecation warnings in the server logs
 
 ---
 

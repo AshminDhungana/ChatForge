@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from backend.fallback import get_fallback_response
+from backend.chat import get_chat_response
 from backend.models import ChatRequest, ChatResponse
 from backend.config import ALLOWED_DOMAINS, PROJECT_ID, WIDGET_API_KEY
 
@@ -44,8 +44,8 @@ async def favicon():
 @app.post("/api/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request):
     await validate_request(request, http_request)
-    reply = get_fallback_response(request.message)
-    return ChatResponse(reply=reply, mode="fallback")
+    result = await get_chat_response(request.message, request.session_id)
+    return ChatResponse(**result)
 
 
 # Mounted last so it doesn't shadow API routes
