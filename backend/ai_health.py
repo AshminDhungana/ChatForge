@@ -227,30 +227,6 @@ async def recovery_loop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Legacy compatibility shims
-# ---------------------------------------------------------------------------
-# These let existing call-sites in chat.py keep working without changes
-# while the internals have been upgraded to the three-state model.
-
-def mark_ai_down() -> None:
-    """Synchronous shim — prefer the async record_failure() instead."""
-    global _state, _last_opened_at
-    _state = CircuitState.OPEN
-    _last_opened_at = datetime.now(timezone.utc)
-    _tripped.set()
-    logger.warning("AI provider marked down (sync shim).")
-
-
-def mark_ai_up() -> None:
-    """Synchronous shim — prefer the async record_success() instead."""
-    global _state, _failures
-    _state = CircuitState.CLOSED
-    _failures = 0
-    _tripped.clear()
-    logger.info("AI provider marked up (sync shim).")
-
-
-# ---------------------------------------------------------------------------
 # Convenience property for main.py /api/v1/ai-status endpoint
 # ---------------------------------------------------------------------------
 
