@@ -80,6 +80,27 @@ async def chat_stream(request: ChatRequest, http_request: Request):
         },
     )
 
+@app.get("/api/v1/config")
+def get_widget_config():
+    """
+    Returns the runtime configuration that widget.js needs to style itself.
+ 
+    Called once on widget load — no auth required (values are non-sensitive
+    presentation config, not secrets). Cached by the browser via standard
+    HTTP caching on the CDN / reverse proxy in production.
+    """
+    from backend.config import (
+        WIDGET_COLOR,
+        GREETING_MESSAGE,
+        QUICK_REPLIES,
+        BUSINESS_NAME,
+    )
+    return {
+        "color":         WIDGET_COLOR,
+        "greeting":      GREETING_MESSAGE,
+        "quick_replies": QUICK_REPLIES,
+        "business_name": BUSINESS_NAME,
+    }      
 
 # Mounted last so it doesn't shadow API routes
 app.mount("/", StaticFiles(directory="widget", html=True), name="widget")

@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatForge — Demo</title>
+    <meta name="description" content="ChatForge embeddable AI chat widget demo for local businesses." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ─── Reset & tokens ─────────────────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --ink:        #0f172a;
+        --ink-muted:  #64748b;
+        --surface:    #ffffff;
+        --bg:         #f8fafc;
+        --brand:      #2563eb;
+        --brand-pale: #eff6ff;
+        --border:     #e2e8f0;
+        --green:      #16a34a;
+        --font:       'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        --mono:       'DM Mono', 'Fira Mono', monospace;
+        --radius:     12px;
+        --shadow-card: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.06);
+      }
+
+      html { font-family: var(--font); color: var(--ink); background: var(--bg); }
+
+      body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ─── Layout ──────────────────────────────────────────────── */
+      .page-wrap {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 0 24px;
+        width: 100%;
+      }
+
+      /* ─── Nav bar ─────────────────────────────────────────────── */
+      .nav {
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        backdrop-filter: blur(8px);
+        background: rgba(255,255,255,0.9);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 60px;
+      }
+      .nav-logo {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nav-logo-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: var(--brand);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 16px;
+      }
+      .nav-badge {
+        background: var(--brand-pale);
+        color: var(--brand);
+        border: 1px solid #bfdbfe;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 9px;
+        border-radius: 99px;
+        letter-spacing: 0.04em;
+      }
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        list-style: none;
+      }
+      .nav-links a {
+        color: var(--ink-muted);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        transition: color .15s ease;
+      }
+      .nav-links a:hover { color: var(--ink); }
+      .nav-cta {
+        background: var(--brand);
+        color: #fff !important;
+        padding: 7px 16px;
+        border-radius: 8px;
+        font-size: 13.5px !important;
+        transition: filter .15s ease !important;
+      }
+      .nav-cta:hover { filter: brightness(1.1); color: #fff !important; }
+
+      /* ─── Hero ────────────────────────────────────────────────── */
+      .hero {
+        padding: 80px 0 64px;
+        text-align: center;
+      }
+      .hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        background: var(--brand-pale);
+        border: 1px solid #bfdbfe;
+        color: var(--brand);
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 5px 13px;
+        border-radius: 99px;
+        letter-spacing: 0.04em;
+        margin-bottom: 28px;
+        animation: fade-up .5s ease both;
+      }
+      .hero-eyebrow .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 0 3px rgba(22,163,74,.2);
+        animation: pulse-green 2s ease-in-out infinite;
+      }
+      @keyframes pulse-green {
+        0%,100% { box-shadow: 0 0 0 3px rgba(22,163,74,.2); }
+        50%      { box-shadow: 0 0 0 5px rgba(22,163,74,.08); }
+      }
+      .hero h1 {
+        font-size: clamp(36px, 5.5vw, 58px);
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1.08;
+        color: var(--ink);
+        margin-bottom: 20px;
+        animation: fade-up .5s .08s ease both;
+      }
+      .hero h1 em {
+        font-style: normal;
+        color: var(--brand);
+      }
+      .hero p {
+        font-size: 18px;
+        color: var(--ink-muted);
+        line-height: 1.65;
+        max-width: 560px;
+        margin: 0 auto 40px;
+        animation: fade-up .5s .16s ease both;
+      }
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        animation: fade-up .5s .24s ease both;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: none;
+        border-radius: 10px;
+        font-family: var(--font);
+        font-size: 14.5px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
+      }
+      .btn:hover { transform: translateY(-1px); }
+      .btn:active { transform: translateY(0); }
+      .btn-primary {
+        background: var(--brand);
+        color: #fff;
+        padding: 12px 22px;
+        box-shadow: 0 2px 8px rgba(37,99,235,.35);
+      }
+      .btn-primary:hover { filter: brightness(1.08); box-shadow: 0 4px 16px rgba(37,99,235,.4); }
+      .btn-secondary {
+        background: var(--surface);
+        color: var(--ink);
+        padding: 12px 22px;
+        border: 1.5px solid var(--border);
+        box-shadow: var(--shadow-card);
+      }
+      .btn-secondary:hover { border-color: #cbd5e1; }
+
+      @keyframes fade-up {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ─── Features ────────────────────────────────────────────── */
+      .features {
+        padding: 0 0 80px;
+        animation: fade-up .6s .3s ease both;
+      }
+      .section-label {
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: .1em;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--ink-muted);
+        margin-bottom: 40px;
+      }
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .feature-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        box-shadow: var(--shadow-card);
+        transition: box-shadow .2s ease, transform .2s ease;
+      }
+      .feature-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,.09);
+        transform: translateY(-2px);
+      }
+      .feature-icon {
+        font-size: 26px;
+        margin-bottom: 14px;
+        display: block;
+      }
+      .feature-card h3 {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin-bottom: 7px;
+      }
+      .feature-card p {
+        font-size: 13.5px;
+        color: var(--ink-muted);
+        line-height: 1.6;
+      }
+
+      /* ─── Embed snippet section ───────────────────────────────── */
+      .embed-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 32px;
+        margin-bottom: 80px;
+        box-shadow: var(--shadow-card);
+      }
+      .embed-section h2 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 6px;
+      }
+      .embed-section > p {
+        color: var(--ink-muted);
+        font-size: 14px;
+        margin-bottom: 20px;
+        line-height: 1.6;
+      }
+      .code-block {
+        background: #0f172a;
+        border-radius: 8px;
+        padding: 18px 20px;
+        overflow-x: auto;
+        position: relative;
+      }
+      .code-block pre {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: #94a3b8;
+        line-height: 1.7;
+        white-space: pre;
+      }
+      .code-block .kw { color: #93c5fd; }
+      .code-block .at { color: #86efac; }
+      .code-block .vl { color: #fca5a5; }
+      .code-block .tg { color: #7dd3fc; }
+      .copy-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(255,255,255,.1);
+        border: 1px solid rgba(255,255,255,.15);
+        color: #94a3b8;
+        border-radius: 6px;
+        padding: 4px 11px;
+        font-size: 11.5px;
+        font-family: var(--font);
+        cursor: pointer;
+        transition: background .15s ease;
+      }
+      .copy-btn:hover { background: rgba(255,255,255,.18); color: #fff; }
+      .copy-btn.copied { color: #86efac; border-color: rgba(134,239,172,.3); }
+
+      /* ─── Demo notice ─────────────────────────────────────────── */
+      .demo-notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 13px;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        margin-bottom: 80px;
+      }
+      .demo-notice-icon {
+        font-size: 22px;
+        flex-shrink: 0;
+        line-height: 1;
+        margin-top: 1px;
+      }
+      .demo-notice h3 {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: #15803d;
+        margin-bottom: 4px;
+      }
+      .demo-notice p {
+        font-size: 13.5px;
+        color: #166534;
+        line-height: 1.6;
+      }
+
+      /* ─── Footer ──────────────────────────────────────────────── */
+      .site-footer {
+        margin-top: auto;
+        border-top: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .site-footer-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 54px;
+        font-size: 13px;
+        color: var(--ink-muted);
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .site-footer a {
+        color: var(--brand);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .site-footer a:hover { text-decoration: underline; }
+
+      /* ─── Responsive ──────────────────────────────────────────── */
+      @media (max-width: 640px) {
+        .hero { padding: 48px 0 40px; }
+        .hero h1 { font-size: 32px; }
+        .hero p  { font-size: 16px; }
+        .nav-links { display: none; }
+        .embed-section { padding: 22px 18px; }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ── Navigation ─────────────────────────────────────────────────── -->
+    <nav class="nav">
+      <div class="page-wrap">
+        <div class="nav-inner">
+          <a href="/" class="nav-logo">
+            <div class="nav-logo-icon">💬</div>
+            ChatForge
+          </a>
+          <ul class="nav-links">
+            <li><a href="http://localhost:8000/docs" target="_blank">API Docs</a></li>
+            <li><a href="https://github.com/AshminDhungana/chatforge" target="_blank">GitHub</a></li>
+            <li><a href="http://localhost:8000/health" target="_blank" class="nav-cta">Health ↗</a></li>
+          </ul>
+          <span class="nav-badge">LIVE DEMO</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ── Main ───────────────────────────────────────────────────────── -->
+    <main>
+      <div class="page-wrap">
+
+        <!-- Hero -->
+        <section class="hero">
+          <div class="hero-eyebrow">
+            <span class="dot"></span>
+            Widget running on localhost:8000
+          </div>
+          <h1>AI chat for<br/><em>any business.</em></h1>
+          <p>
+            Drop a single <code>&lt;script&gt;</code> tag onto your site and
+            give every visitor an intelligent, always-on assistant — no back-end
+            work required.
+          </p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" onclick="document.getElementById('chat-button')?.click()">
+              💬 Try the widget
+            </button>
+            <a class="btn btn-secondary" href="https://github.com/AshminDhungana/chatforge" target="_blank" rel="noopener">
+              ⭐ View on GitHub
+            </a>
+          </div>
+        </section>
+
+        <!-- Live demo notice -->
+        <div class="demo-notice">
+          <div class="demo-notice-icon">🎉</div>
+          <div>
+            <h3>The widget is live in the bottom-right corner</h3>
+            <p>
+              Click the blue chat bubble to open it. You're talking to the real
+              ChatForge backend running at <strong>localhost:8000</strong>.
+              If no <code>API_KEY</code> is set in <code>.env</code>, the
+              built-in fallback engine will respond instead.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature grid -->
+        <section class="features">
+          <p class="section-label">What's inside</p>
+          <div class="feature-grid">
+            <div class="feature-card">
+              <span class="feature-icon">⚡</span>
+              <h3>Streaming responses</h3>
+              <p>Tokens arrive in real time — no spinner, no wait. Uses SSE and LangChain's <code>astream()</code>.</p>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon">🧠</span>
+              <h3>Conversation memory</h3>
+              <p>The bot remembers the entire chat within the session. Powered by LangGraph's MemorySaver checkpointer.</p>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon">🔒</span>
+              <h3>Session isolation</h3>
+              <p>Every visitor gets a unique UUID on load — two users chatting simultaneously never see each other's history.</p>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon">🎛️</span>
+              <h3>Zero-config embed</h3>
+              <p>One <code>&lt;script&gt;</code> tag, two attributes. Works on any HTML page — no npm, no build step.</p>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon">🛡️</span>
+              <h3>Smart fallback</h3>
+              <p>No API key? The rule-based NLP engine activates automatically — the widget is always online.</p>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon">🎨</span>
+              <h3>Brand-aware styling</h3>
+              <p>Colour, greeting, and quick-reply buttons all come from <code>.env</code>. Shadow DOM ensures zero style conflicts.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Embed snippet -->
+        <section class="embed-section">
+          <h2>Embed snippet</h2>
+          <p>
+            Copy this tag and paste it before the <code>&lt;/body&gt;</code> of
+            any page. Replace the attribute values with your own.
+          </p>
+          <div class="code-block">
+            <button class="copy-btn" id="copy-btn" onclick="copySnippet()">Copy</button>
+            <pre><span class="tg">&lt;script</span>
+  <span class="at">src</span>=<span class="vl">"http://localhost:8000/widget.js"</span>
+  <span class="at">data-project-id</span>=<span class="vl">"marios-pizza"</span>
+  <span class="at">data-widget-key</span>=<span class="vl">"change-me-to-a-random-secret"</span>
+<span class="tg">&gt;&lt;/script&gt;</span></pre>
+          </div>
+        </section>
+
+      </div><!-- /.page-wrap -->
+    </main>
+
+    <!-- ── Footer ─────────────────────────────────────────────────────── -->
+    <footer class="site-footer">
+      <div class="page-wrap">
+        <div class="site-footer-inner">
+          <span>© 2024 ChatForge — MIT License</span>
+          <span>
+            Made with care for local businesses ·
+            <a href="https://github.com/AshminDhungana/chatforge" target="_blank" rel="noopener">GitHub</a>
+          </span>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ── ChatForge Widget ────────────────────────────────────────────── -->
+    <!--
+      This is the actual embed tag.
+      In production, replace "http://localhost:8000" with your server URL.
+    -->
+    <script
+      src="http://localhost:8000/widget.js"
+      data-project-id="marios-pizza"
+      data-widget-key="change-me-to-a-random-secret"
+    ></script>
+
+    <!-- ── Demo page JS (copy snippet, etc.) ─────────────────────────── -->
+    <script>
+      function copySnippet() {
+        const snippet = `<script\n  src="http://localhost:8000/widget.js"\n  data-project-id="marios-pizza"\n  data-widget-key="change-me-to-a-random-secret"\n><\/script>`;
+        navigator.clipboard.writeText(snippet).then(() => {
+          const btn = document.getElementById("copy-btn");
+          btn.textContent = "Copied!";
+          btn.classList.add("copied");
+          setTimeout(() => {
+            btn.textContent = "Copy";
+            btn.classList.remove("copied");
+          }, 2000);
+        });
+      }
+    </script>
+
+  </body>
+</html>
