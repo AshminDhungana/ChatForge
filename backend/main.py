@@ -13,6 +13,7 @@ from backend.chat import get_chat_response, stream_chat_response
 from backend.models import ChatRequest, ChatResponse
 from backend.config import ALLOWED_DOMAINS, PROJECT_ID, WIDGET_API_KEY, RATE_LIMIT
 from backend.ai_health import recovery_loop, get_status_dict
+from urllib.parse import urlparse
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -159,6 +160,41 @@ def ai_status():
 # ----------------------------------------------------------------------
 # Validation helper 
 # ----------------------------------------------------------------------
+def is_allowed_origin(origin: str, allowed_domains: list) -> bool:
+    """Check if the origin's hostname matches an allowed domain."""
+    if not origin or not allowed_domains:
+        return False
+    try:
+        parsed = urlparse(origin)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # Normalize: remove port if present (origin may include port)
+        hostname = hostname.split(':')[0]
+        for domain in allowed_domains:
+            if hostname == domain or hostname.endswith('.' + domain):
+                return True
+    except Exception:
+        return False
+    return False
+
+def is_allowed_referer(referer: str, allowed_domains: list) -> bool:
+    """Check if the referer URL's hostname matches an allowed domain."""
+    if not referer or not allowed_domains:
+        return False
+    try:
+        parsed = urlparse(referer)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        hostname = hostname.split(':')[0]
+        for domain in allowed_domains:
+            if hostname == domain or hostname.endswith('.' + domain):
+                return True
+    except Exception:
+        return False
+    return False
+
 async def validate_request(chat_request: ChatRequest, request: Request):
     if chat_request.project_id != PROJECT_ID:
         raise HTTPException(status_code=401, detail="Invalid project")
@@ -168,7 +204,11 @@ async def validate_request(chat_request: ChatRequest, request: Request):
 
     origin = request.headers.get("origin", "")
     referer = request.headers.get("referer", "")
-    domain_ok = any(d in origin or d in referer for d in ALLOWED_DOMAINS)
+    
+    # At least one header must match the allowed domains
+    domain_ok = (is_allowed_origin(origin, ALLOWED_DOMAINS) or 
+                 is_allowed_referer(referer, ALLOWED_DOMAINS))
+    
     if ALLOWED_DOMAINS and not domain_ok:
         raise HTTPException(status_code=403, detail="Domain not allowed")
 
